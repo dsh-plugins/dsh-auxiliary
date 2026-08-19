@@ -8,6 +8,7 @@
 
 [English](README.md) | 简体中文
 
+[![DSH Plugin](https://img.shields.io/badge/DeepSeek%20Harness-plugin-4f7cff)](https://github.com/topics/dsh-plugin)
 <a href="https://github.com/dsh-plugins/dsh-auxiliary/actions/workflows/npm-publish.yml">
   <img src="https://github.com/dsh-plugins/dsh-auxiliary/actions/workflows/npm-publish.yml/badge.svg" alt="Build Status">
 </a>
