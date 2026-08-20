@@ -39,6 +39,8 @@ export const zh = {
   imageCapabilityLoading: '正在读取图片输入声明…',
   /** Shown while a changed model-catalog mark waits for the provider card's Apply. */
   imageCapabilityPending: '保存提供方设置后生效。',
+  /** Shown on a newly added model row before a model id has been typed. */
+  imageCapabilityNeedsModelId: '填写模型 ID 后可标记图片能力。',
   /** Injected model-catalog checkbox label for image generation. */
   imageGenToggle: '允许图片生成',
   /** Injected model-catalog checkbox explanation for image generation. */
@@ -138,6 +140,7 @@ export const en: Record<AuxiliaryKey, string> = {
   imageCapabilityDescription: 'Enable only if the upstream model accepts images.',
   imageCapabilityLoading: 'Reading the image-input declaration…',
   imageCapabilityPending: 'Applies after you save the provider settings.',
+  imageCapabilityNeedsModelId: 'Enter a model ID to mark image capabilities.',
   imageGenToggle: 'Allow image generation',
   imageGenDescription: 'Marks the model as able to generate images, for auxiliary image-generation features to pick from.',
   imageGenLoading: 'Reading the image-generation declaration…',

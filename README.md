@@ -304,9 +304,11 @@ settings**:
 The checkboxes are injected into every user-owned `llm-pi-ai` model row and
 are always visible — no need to expand the row's capacity disclosure — and a
 model you are **adding** inside the custom-provider create card gets working
-checkboxes too. A changed mark is recorded in the browser first and written
-after the page saves the provider settings (Apply), so you can edit other model
-fields alongside image capabilities without tripping the page's own
+checkboxes too. A row added without a model id shows both checkboxes disabled
+until an id is typed, and editing an existing model id carries its saved
+capability marks to the new id. A changed mark is recorded in the browser first
+and written after the page saves the provider settings (Apply), so you can edit
+other model fields alongside image capabilities without tripping the page's own
 "settings changed elsewhere" revision conflict. Rows that cannot carry the
 marks explain why instead of staying silent: DeepSeek-official (or any
 non-pi-ai adapter) rows show a notice that the marks are `llm-pi-ai`-only, and

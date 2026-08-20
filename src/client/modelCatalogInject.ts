@@ -135,6 +135,37 @@ interface ProviderDirectory {
   byRoute: Map<string, ProviderInfo>;
 }
 
+/** One saved llm-pi-ai model row plus its persisted capability marks. */
+interface PiAiModelRow {
+  provider: string;
+  model: string;
+  /** Effective image-input declaration (`input` array or provider default). */
+  imageInput?: boolean;
+  /** Persisted image-generation flag on the raw user row. */
+  imageGen?: boolean;
+}
+
+/** Narrow an unknown settings value to a plain record. */
+function recordOf(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+/** Read a modality declaration without admitting arbitrary wire values. */
+function modalityList(value: unknown): readonly string[] | undefined {
+  return Array.isArray(value) && value.every((entry) => typeof entry === 'string')
+    ? value
+    : undefined;
+}
+
+/** Whether a model row's effective `input` declaration includes image input. */
+function declaresImageInput(model: Record<string, unknown> | undefined, providerDefault: readonly string[] | undefined): boolean {
+  const modelInput = modalityList(model?.input);
+  const effective = modelInput !== undefined && modelInput.length > 0 ? modelInput : providerDefault;
+  return effective?.includes('image') ?? false;
+}
+
 /** Match a model-row input's aria-label prefix. */
 function isModelIdInput(element: Element): boolean {
   const label = element.getAttribute('aria-label');
@@ -166,7 +197,8 @@ function buildCheckbox(
   pending: PendingMap,
 ): HTMLElement {
   const key = rowKey(provider, model);
-  const state: CheckboxState = { provider, model, supported: false, writable: true, busy: true };
+  const empty = model.length === 0;
+  const state: CheckboxState = { provider, model, supported: false, writable: !empty, busy: !empty };
 
   const input = document.createElement('input');
   input.type = 'checkbox';
@@ -204,14 +236,22 @@ function buildCheckbox(
     input.checked = state.supported;
     input.disabled = state.busy || !state.writable;
     const marked = pendingValue();
-    hint.textContent = state.busy
-      ? t(spec.copy.loading)
-      : marked !== undefined
-        ? t('imageCapabilityPending')
-        : t(spec.copy.description);
+    hint.textContent = empty
+      ? t('imageCapabilityNeedsModelId')
+      : state.busy
+        ? t(spec.copy.loading)
+        : marked !== undefined
+          ? t('imageCapabilityPending')
+          : t(spec.copy.description);
   };
 
-  if (pendingValue() !== undefined) {
+  if (empty) {
+    // Row created without a model id yet: show the checkboxes disabled so the
+    // user sees they exist, and enable them as soon as an id is typed.
+    state.supported = false;
+    state.busy = false;
+    render();
+  } else if (pendingValue() !== undefined) {
     state.supported = pendingValue() === true;
     state.writable = true;
     state.busy = false;
@@ -237,7 +277,7 @@ function buildCheckbox(
   }
 
   input.addEventListener('change', () => {
-    if (state.busy || !state.writable) return;
+    if (empty || state.busy || !state.writable) return;
     state.supported = input.checked;
     pending.set(key, { ...pending.get(key), [spec.mark]: state.supported });
     render();
@@ -305,6 +345,7 @@ function injectRow(
   provider: string,
   model: string,
   draft: boolean,
+  entries: ReadonlyArray<PiAiModelRow>,
   pending: PendingMap,
 ): void {
   const entry = entryOf(input);
@@ -316,9 +357,17 @@ function injectRow(
     const fresh = existingKey === key
       && (existing.hasAttribute(MARK_DRAFT) === draft);
     if (fresh) return;
-    // The row's model id changed while a mark was pending: carry the flags to
-    // the current id so the page's Apply does not strand them.
+    // The row's model id changed: carry the persisted capability marks of the
+    // previous saved row to the new id, then overlay any marks the user toggled
+    // in this session, so editing an id does not reset the two checkboxes.
     if (existingKey !== null && existingKey !== key && existingKey.slice(0, existingKey.indexOf('\u0000')) === provider) {
+      const previous = entries.find((row) => rowKey(row.provider, row.model) === existingKey);
+      if (previous !== undefined) {
+        const inherited: PendingFlags = {};
+        if (previous.imageInput !== undefined) inherited[MARK_IMAGE_INPUT] = previous.imageInput;
+        if (previous.imageGen !== undefined) inherited[MARK_IMAGE_GEN] = previous.imageGen;
+        pending.set(key, { ...inherited, ...pending.get(key) });
+      }
       migratePending(pending, existingKey, key);
     }
     existing.remove();
@@ -408,7 +457,7 @@ function rowBlockPresent(key: string): boolean {
  */
 async function applyPendingMarks(
   api: IApiClient,
-  entries: ReadonlyArray<{ provider: string; model: string }>,
+  entries: ReadonlyArray<PiAiModelRow>,
   pending: PendingMap,
 ): Promise<boolean> {
   let applied = false;
@@ -440,7 +489,7 @@ async function applyPendingMarks(
 function sweep(
   api: IApiClient,
   t: TranslateNS<'dsh-auxiliary'>,
-  entries: ReadonlyArray<{ provider: string; model: string }>,
+  entries: ReadonlyArray<PiAiModelRow>,
   catalogKeys: ReadonlySet<string>,
   directory: ProviderDirectory,
   pending: PendingMap,
@@ -449,10 +498,18 @@ function sweep(
   for (const input of inputs) {
     if (!isModelIdInput(input)) continue;
     const value = (input as HTMLInputElement).value.trim();
-    // Empty rows are edits in progress; leave them alone until an id exists.
-    if (value.length === 0) continue;
     const info = providerInfoOf(input, directory);
     if (info === undefined) continue;
+    if (value.length === 0) {
+      // Newly added row without an id: still show the two checkboxes so they
+      // are discoverable, disabled until the user types a model id.
+      if (info.settingsNs === 'llm-pi-ai') {
+        injectRow(api, t, input, info.provider, '', true, entries, pending);
+      } else {
+        injectNotice(input, t, 'imageCapabilityUnsupported');
+      }
+      continue;
+    }
     const saved = entries.some((entry) => entry.provider === info.provider && entry.model === value);
     if (saved || info.settingsNs === 'llm-pi-ai') {
       // Saved row → checkboxes initialized from the document, with changes
@@ -462,7 +519,7 @@ function sweep(
       // notice.
       const draft = !saved && info.settingsNs === 'llm-pi-ai' && !catalogKeys.has(rowKey(info.provider, value));
       if (saved || draft) {
-        injectRow(api, t, input, info.provider, value, draft, pending);
+        injectRow(api, t, input, info.provider, value, draft, entries, pending);
         continue;
       }
     }
@@ -471,27 +528,51 @@ function sweep(
   }
 }
 
-/** Read the user-owned rows and the composition-base catalog of llm-pi-ai. */
+/** Read the user-owned rows, their capability marks, and the pi-ai catalog. */
 async function piAiModelState(api: IApiClient): Promise<{
-  entries: Array<{ provider: string; model: string }>;
+  entries: Array<PiAiModelRow>;
   catalogKeys: Set<string>;
 }> {
   const response = await api.settings.describe({});
   if (!response.result.ok) return { entries: [], catalogKeys: new Set() };
   const namespace = response.result.value.namespaces.find((entry) => entry.ns === 'llm-pi-ai');
   if (namespace === undefined) return { entries: [], catalogKeys: new Set() };
-  const user = namespace.user as { providers?: Record<string, { models?: Array<{ id?: unknown }> }> } | undefined;
-  const base = namespace.base as { providers?: Record<string, { models?: Array<{ id?: unknown }> }> } | undefined;
-  const rows: Array<{ provider: string; model: string }> = [];
-  const catalogKeys = new Set<string>();
-  for (const [provider, profile] of Object.entries(user?.providers ?? {})) {
-    for (const model of profile?.models ?? []) {
-      if (typeof model?.id === 'string' && model.id.length > 0) rows.push({ provider, model: model.id });
+  const user = recordOf(namespace.user);
+  const resolved = recordOf(namespace.value);
+  const userProviders = recordOf(user?.providers);
+  const resolvedProviders = recordOf(resolved?.providers);
+  const rows: Array<PiAiModelRow> = [];
+  for (const [provider, profile] of Object.entries(userProviders ?? {})) {
+    const rawModels = recordOf(profile)?.models;
+    if (!Array.isArray(rawModels)) continue;
+    const resolvedProfile = recordOf(resolvedProviders?.[provider]);
+    const resolvedModels = Array.isArray(resolvedProfile?.models)
+      ? resolvedProfile.models.map(recordOf)
+      : [];
+    const defaultInput = modalityList(resolvedProfile?.defaultInput);
+    for (const model of rawModels) {
+      const userRow = recordOf(model);
+      if (userRow === undefined || typeof userRow.id !== 'string' || userRow.id.length === 0) continue;
+      const resolvedModel = resolvedModels.find((entry) => entry?.id === userRow.id);
+      rows.push({
+        provider,
+        model: userRow.id,
+        imageInput: declaresImageInput(resolvedModel ?? userRow, defaultInput),
+        imageGen: userRow.imageGeneration === true,
+      });
     }
   }
-  for (const [provider, profile] of Object.entries(base?.providers ?? {})) {
-    for (const model of profile?.models ?? []) {
-      if (typeof model?.id === 'string' && model.id.length > 0) catalogKeys.add(rowKey(provider, model.id));
+  const base = recordOf(namespace.base);
+  const baseProviders = recordOf(base?.providers);
+  const catalogKeys = new Set<string>();
+  for (const [provider, profile] of Object.entries(baseProviders ?? {})) {
+    const models = recordOf(profile)?.models;
+    if (!Array.isArray(models)) continue;
+    for (const model of models) {
+      const row = recordOf(model);
+      if (row !== undefined && typeof row.id === 'string' && row.id.length > 0) {
+        catalogKeys.add(rowKey(provider, row.id));
+      }
     }
   }
   return { entries: rows, catalogKeys };
@@ -521,7 +602,7 @@ export function startModelCatalogInjection(
   api: IApiClient,
   t: TranslateNS<'dsh-auxiliary'>,
 ): () => void {
-  let entries: Array<{ provider: string; model: string }> = [];
+  let entries: Array<PiAiModelRow> = [];
   let catalogKeys: Set<string> = new Set();
   let directory: ProviderDirectory = { byDisplay: new Map(), byRoute: new Map() };
   const pending: PendingMap = new Map();
