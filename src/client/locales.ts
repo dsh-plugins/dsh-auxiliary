@@ -37,6 +37,8 @@ export const zh = {
   imageCapabilityDescription: '仅在上游模型确实支持图片时启用。',
   /** Loading state of an injected model-catalog checkbox. */
   imageCapabilityLoading: '正在读取图片输入声明…',
+  /** Shown while a changed model-catalog mark waits for the provider card's Apply. */
+  imageCapabilityPending: '保存提供方设置后生效。',
   /** Injected model-catalog checkbox label for image generation. */
   imageGenToggle: '允许图片生成',
   /** Injected model-catalog checkbox explanation for image generation. */
@@ -135,6 +137,7 @@ export const en: Record<AuxiliaryKey, string> = {
   imageCapabilityToggle: 'Allow image input',
   imageCapabilityDescription: 'Enable only if the upstream model accepts images.',
   imageCapabilityLoading: 'Reading the image-input declaration…',
+  imageCapabilityPending: 'Applies after you save the provider settings.',
   imageGenToggle: 'Allow image generation',
   imageGenDescription: 'Marks the model as able to generate images, for auxiliary image-generation features to pick from.',
   imageGenLoading: 'Reading the image-generation declaration…',

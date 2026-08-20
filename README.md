@@ -220,7 +220,7 @@ Each tool is registered only while its feature is enabled with a complete route 
 The plugin registers its own settings namespace (`dsh-auxiliary`) with a schemastery schema; the settings page writes through `settings.update(...)`, and `installSettingsSection` keeps the plugin's resolved view in sync. Two details matter:
 
 - **Raw vs resolved**: model rows in the `llm-pi-ai` namespace are validated by a `z.object` schema that strips unknown keys from *resolved* views but does not throw — so non-schema fields like `imageGeneration` survive in the **raw user section**. Reads that must see such fields go through `namespace.user` (raw); routed reads use `settings.get()` (resolved).
-- **DOM injection**: the model catalog page is owned by the harness client, so the plugin observes the DOM (`MutationObserver`) and appends the **Allow image input** / **Allow image generation** checkboxes into each user-owned model row's expanded advanced area. The checkboxes read/write the raw user section directly, and the image-generation picker filters the catalog to marked models only.
+- **DOM injection**: the model catalog page is owned by the harness client, so the plugin observes the DOM (`MutationObserver`) and appends the **Allow image input** / **Allow image generation** checkboxes into each user-owned model row's expanded advanced area. The checkboxes initialize from the raw user section; changes are held in the browser until that provider card closes (after the page's Apply) and are then written back to the raw user section, so they cannot race the page's own revision check. The image-generation picker filters the catalog to marked models only.
 
 ### 4. Credentials, not plain env
 
@@ -302,14 +302,16 @@ settings**:
   only when the upstream endpoint actually generates images.
 
 The checkboxes are injected into every user-owned `llm-pi-ai` model row and
-are always visible — no need to expand the row's capacity disclosure. A model
-you are **adding** gets working checkboxes immediately: the marks are recorded
-in the browser and written into the model's settings at the same time the page
-saves the new model (Apply), so you can set image capabilities while adding,
-not only after saving. Rows that cannot carry the marks explain why instead of
-staying silent: DeepSeek-official (or any non-pi-ai adapter) rows show a notice
-that the marks are `llm-pi-ai`-only, and pi-ai catalog rows not yet saved into
-the user section say to save the model first.
+are always visible — no need to expand the row's capacity disclosure — and a
+model you are **adding** inside the custom-provider create card gets working
+checkboxes too. A changed mark is recorded in the browser first and written
+after the page saves the provider settings (Apply), so you can edit other model
+fields alongside image capabilities without tripping the page's own
+"settings changed elsewhere" revision conflict. Rows that cannot carry the
+marks explain why instead of staying silent: DeepSeek-official (or any
+non-pi-ai adapter) rows show a notice that the marks are `llm-pi-ai`-only, and
+pi-ai catalog rows not yet saved into the user section say to save the model
+first.
 
 ## Notes
 

@@ -14,8 +14,11 @@
  * only; the checkbox read/write always targets the `llm-pi-ai` namespace.
  *
  * Rows are classified by their saved state:
- * - **saved** (in `namespace.user`) → live checkboxes that read/write the
- *   settings document immediately;
+ * - **saved** (in `namespace.user`) → checkboxes initialized from the saved
+ *   document; a change is recorded as a pending mark and written after the
+ *   provider card closes, so it cannot advance the namespace revision under
+ *   the card's `openedAt` expectation and make the page's own Apply report a
+ *   false "settings changed elsewhere" conflict;
  * - **new draft** (typed id, not saved, not a catalog row) → checkboxes that
  *   record a pending mark locally; the mark is written right after the model
  *   is saved by the page's Apply, so the user can set image capabilities
@@ -25,6 +28,13 @@
  *   Apply);
  * - **non-pi-ai** (e.g. the DeepSeek official adapter) → a notice that the
  *   marks are `llm-pi-ai`-only.
+ *
+ * Provider/model identity is resolved from the settings document and from the
+ * editor card DOM: an existing provider's rows live inside its `li` card, the
+ * add-provider flow wraps its editor in an `addCard` with a provider select,
+ * and the custom-provider create card exposes the future route id through its
+ * "Provider ID" input. All of those are `llm-pi-ai`-editable rows (or are
+ * explained when they are not).
  *
  * The injected block is appended to the row itself, not to the page's
  * "capacities" disclosure, so the checkboxes are visible whether or not the
@@ -53,13 +63,17 @@ const MARK_IMAGE_GEN = 'data-dsh-aux-image-gen';
 const MARK_DRAFT = 'data-dsh-aux-draft';
 /** aria-label prefixes of the model-id text input on both shipped languages. */
 const MODEL_ID_LABELS = ['模型 ID ', 'Model ID '];
+/** aria-label of the custom-provider create card's future route input. */
+const PROVIDER_ROUTE_LABELS = ['Provider ID'];
+/** aria-label of the add-provider flow's route select on both shipped languages. */
+const PROVIDER_SELECT_LABELS = ['提供方', 'Provider'];
 
 /** Copy keys one injected capability checkbox renders. */
 type CapabilityCopyKey =
   | 'imageCapabilityToggle' | 'imageCapabilityDescription' | 'imageCapabilityLoading'
   | 'imageGenToggle' | 'imageGenDescription' | 'imageGenLoading';
 
-/** One injected capability checkbox: marker, copy, and the row read/write pair. */
+/** One injected capability checkbox: marker, copy, and the row read pair. */
 interface CapabilitySpec {
   mark: 'data-dsh-aux-image-input' | 'data-dsh-aux-image-gen';
   copy: {
@@ -68,7 +82,6 @@ interface CapabilitySpec {
     loading: CapabilityCopyKey;
   };
   load: (api: IApiClient, provider: string, model: string) => Promise<{ supported: boolean; writable: boolean }>;
-  save: (api: IApiClient, provider: string, model: string, supported: boolean) => Promise<unknown>;
 }
 
 /** The two injected capabilities, in display order. */
@@ -81,7 +94,6 @@ const CAPABILITIES: readonly CapabilitySpec[] = [
       loading: 'imageCapabilityLoading',
     },
     load: loadModelImageCapability,
-    save: saveModelImageCapability,
   },
   {
     mark: MARK_IMAGE_GEN,
@@ -91,7 +103,6 @@ const CAPABILITIES: readonly CapabilitySpec[] = [
       loading: 'imageGenLoading',
     },
     load: loadModelGenerationCapability,
-    save: saveModelGenerationCapability,
   },
 ];
 
@@ -118,6 +129,12 @@ interface ProviderInfo {
   settingsNs: string;
 }
 
+/** Provider lookup maps keyed by display name and by route id. */
+interface ProviderDirectory {
+  byDisplay: Map<string, ProviderInfo>;
+  byRoute: Map<string, ProviderInfo>;
+}
+
 /** Match a model-row input's aria-label prefix. */
 function isModelIdInput(element: Element): boolean {
   const label = element.getAttribute('aria-label');
@@ -130,9 +147,14 @@ function rowKey(provider: string, model: string): string {
 }
 
 /**
- * Build one injected control. In draft mode the toggle only records a pending
- * mark (the row is not saved yet); otherwise it reads/writes the settings
- * document through the spec's load/save pair.
+ * Build one injected control. Every change records a pending mark; the mark is
+ * applied once the provider card is gone from the DOM (after the page's Apply
+ * or after the card is closed). Writing immediately would advance the
+ * `llm-pi-ai` namespace revision while the page's own card still holds its
+ * opening revision, so the page's Apply would then fail with a settings
+ * conflict that the user did not cause. Saved rows still load their current
+ * declaration to initialize the checkbox; draft rows start from the pending
+ * map.
  */
 function buildCheckbox(
   api: IApiClient,
@@ -177,51 +199,48 @@ function buildCheckbox(
   box.style.gap = '4px';
   box.append(row, hint);
 
+  const pendingValue = (): boolean | undefined => pending.get(key)?.[spec.mark];
   const render = (): void => {
     input.checked = state.supported;
     input.disabled = state.busy || !state.writable;
-    hint.textContent = state.busy ? t(spec.copy.loading) : t(spec.copy.description);
+    const marked = pendingValue();
+    hint.textContent = state.busy
+      ? t(spec.copy.loading)
+      : marked !== undefined
+        ? t('imageCapabilityPending')
+        : t(spec.copy.description);
   };
 
-  if (draft) {
-    // Draft row: reflect the pending mark, toggle only updates the pending map.
-    state.supported = pending.get(key)?.[spec.mark] === true;
+  if (pendingValue() !== undefined) {
+    state.supported = pendingValue() === true;
     state.writable = true;
     state.busy = false;
     render();
-    input.addEventListener('change', () => {
-      state.supported = input.checked;
-      pending.set(key, { ...pending.get(key), [spec.mark]: state.supported });
-      render();
-    });
-    return box;
-  }
-
-  void spec.load(api, provider, model).then((capability) => {
-    state.supported = capability.supported;
-    state.writable = capability.writable;
+  } else if (draft) {
+    // New draft row: no saved declaration yet, only the pending mark.
+    state.supported = false;
+    state.writable = true;
     state.busy = false;
     render();
-  }).catch(() => {
-    state.writable = false;
-    state.busy = false;
-    render();
-  });
-
-  input.addEventListener('change', () => {
-    if (state.busy || !state.writable) return;
-    const requested = input.checked;
-    state.busy = true;
-    render();
-    void spec.save(api, provider, model, requested).then(() => {
-      state.supported = requested;
+  } else {
+    void spec.load(api, provider, model).then((capability) => {
+      const marked = pendingValue();
+      state.supported = marked === undefined ? capability.supported : marked;
+      state.writable = capability.writable;
       state.busy = false;
       render();
     }).catch(() => {
-      state.supported = !requested;
+      state.writable = false;
       state.busy = false;
       render();
     });
+  }
+
+  input.addEventListener('change', () => {
+    if (state.busy || !state.writable) return;
+    state.supported = input.checked;
+    pending.set(key, { ...pending.get(key), [spec.mark]: state.supported });
+    render();
   });
 
   return box;
@@ -267,6 +286,14 @@ function entryOf(input: Element): HTMLElement | null {
   return entry instanceof HTMLElement ? entry : null;
 }
 
+/** Move pending marks from an old row key to the row's current key. */
+function migratePending(pending: PendingMap, from: string, to: string): void {
+  const flags = pending.get(from);
+  if (flags === undefined) return;
+  pending.set(to, { ...pending.get(to), ...flags });
+  pending.delete(from);
+}
+
 /**
  * Inject checkboxes into one model row. A stale block (different model id or a
  * draft block that has since been saved) is rebuilt; a fresh one is kept.
@@ -285,9 +312,15 @@ function injectRow(
   const key = rowKey(provider, model);
   const existing = entry.querySelector(`[${MARK_BLOCK}]`);
   if (existing !== null) {
-    const fresh = existing.getAttribute(MARK_BLOCK) === key
+    const existingKey = existing.getAttribute(MARK_BLOCK);
+    const fresh = existingKey === key
       && (existing.hasAttribute(MARK_DRAFT) === draft);
     if (fresh) return;
+    // The row's model id changed while a mark was pending: carry the flags to
+    // the current id so the page's Apply does not strand them.
+    if (existingKey !== null && existingKey !== key && existingKey.slice(0, existingKey.indexOf('\u0000')) === provider) {
+      migratePending(pending, existingKey, key);
+    }
     existing.remove();
   }
   entry.querySelector(`[${MARK_NOTICE}]`)?.remove();
@@ -308,28 +341,69 @@ function injectNotice(
 }
 
 /**
- * Resolve the provider card a model row belongs to. The model editor lives
- * inside the provider's `li` card, whose head carries the provider display
- * name; the display name is matched against the live provider directory.
+ * Resolve the provider card a model row belongs to.
+ *
+ * Existing providers render their editor inside an `li` row card, whose head
+ * carries the display name and route; the add-provider flow wraps the editor
+ * in a card with a provider select; the custom-provider create card is a bare
+ * editor with a "Provider ID" input that names the route before it exists.
+ * Identity is resolved semantically from aria-labels, so it does not depend on
+ * the page's hashed CSS class names.
+ *
  * @returns the provider route and its settings namespace, or undefined.
  */
-function providerInfoOf(input: Element, providersByDisplay: Map<string, ProviderInfo>): ProviderInfo | undefined {
+function providerInfoOf(input: Element, directory: ProviderDirectory): ProviderInfo | undefined {
+  // Walk ancestors so the create/add flows can be attributed: the
+  // custom-provider create card contains the future route input, and the
+  // add-provider flow contains a provider select.
+  let node: Element | null = input.parentElement;
+  while (node !== null && node !== document.body) {
+    for (const candidate of node.querySelectorAll<HTMLInputElement>('input[aria-label]')) {
+      const label = candidate.getAttribute('aria-label');
+      if (label !== null && PROVIDER_ROUTE_LABELS.includes(label)) {
+        const route = candidate.value.trim();
+        if (route.length > 0) return { provider: route, settingsNs: 'llm-pi-ai' };
+      }
+    }
+    for (const candidate of node.querySelectorAll<HTMLSelectElement>('select[aria-label]')) {
+      const label = candidate.getAttribute('aria-label');
+      if (label !== null && PROVIDER_SELECT_LABELS.includes(label)) {
+        const route = candidate.value.trim();
+        const info = route.length > 0 ? directory.byRoute.get(route) : undefined;
+        if (info !== undefined) return info;
+      }
+    }
+    node = node.parentElement;
+  }
+
+  // Existing provider editors render inside an `li` row card whose head
+  // carries the display name and route.
   const card = input.closest('li');
   if (card === null) return undefined;
   for (const span of card.querySelectorAll('span')) {
     const text = span.textContent?.trim() ?? '';
     if (text.length === 0) continue;
-    const info = providersByDisplay.get(text);
+    const info = directory.byDisplay.get(text) ?? directory.byRoute.get(text);
     if (info !== undefined) return info;
   }
   return undefined;
 }
 
 /**
+ * Whether an injected capability block for a row key is still in the DOM.
+ * Attribute values carry the provider/model separator as a NUL byte, which
+ * cannot be addressed safely with CSS attribute selectors (CSS.escape turns it
+ * into U+FFFD), so compare the attribute value directly instead.
+ */
+function rowBlockPresent(key: string): boolean {
+  return [...document.querySelectorAll<HTMLElement>(`[${MARK_BLOCK}]`)].some((block) => block.getAttribute(MARK_BLOCK) === key);
+}
+
+/**
  * Write pending marks for rows that have since been saved by the page's Apply.
- * A pending mark is only applied once its model exists in the user section;
- * the draft checkbox therefore works before saving, and the mark lands right
- * after the model is persisted.
+ * A pending mark is only applied once its model exists in the user section and
+ * its injected block is gone from the DOM; the latter means the provider card
+ * has closed, so the write no longer races the card's own `expectedRevision`.
  * @returns whether any pending mark was applied (callers may resweep).
  */
 async function applyPendingMarks(
@@ -343,6 +417,9 @@ async function applyPendingMarks(
     const provider = key.slice(0, sep);
     const model = key.slice(sep + 1);
     if (!entries.some((entry) => entry.provider === provider && entry.model === model)) continue;
+    // The card is still open (or the row is still rendered): leave the mark
+    // pending until the page's Apply replaces/removes the editor DOM.
+    if (rowBlockPresent(key)) continue;
     try {
       if (flags['data-dsh-aux-image-input'] !== undefined) {
         await saveModelImageCapability(api, provider, model, flags['data-dsh-aux-image-input']);
@@ -365,7 +442,7 @@ function sweep(
   t: TranslateNS<'dsh-auxiliary'>,
   entries: ReadonlyArray<{ provider: string; model: string }>,
   catalogKeys: ReadonlySet<string>,
-  providersByDisplay: Map<string, ProviderInfo>,
+  directory: ProviderDirectory,
   pending: PendingMap,
 ): void {
   const inputs = document.querySelectorAll('input[aria-label]');
@@ -374,13 +451,15 @@ function sweep(
     const value = (input as HTMLInputElement).value.trim();
     // Empty rows are edits in progress; leave them alone until an id exists.
     if (value.length === 0) continue;
-    const info = providerInfoOf(input, providersByDisplay);
+    const info = providerInfoOf(input, directory);
     if (info === undefined) continue;
     const saved = entries.some((entry) => entry.provider === info.provider && entry.model === value);
     if (saved || info.settingsNs === 'llm-pi-ai') {
-      // Saved row → live checkboxes. New draft row under a pi-ai provider →
-      // draft checkboxes (marks land after Apply). A catalog row that is not
-      // saved yet cannot be persisted by the page, so it keeps a notice.
+      // Saved row → checkboxes initialized from the document, with changes
+      // applied after the provider card closes. New draft row under a pi-ai
+      // provider → draft checkboxes (marks land after Apply). A catalog row
+      // that is not saved yet cannot be persisted by the page, so it keeps a
+      // notice.
       const draft = !saved && info.settingsNs === 'llm-pi-ai' && !catalogKeys.has(rowKey(info.provider, value));
       if (saved || draft) {
         injectRow(api, t, input, info.provider, value, draft, pending);
@@ -418,17 +497,20 @@ async function piAiModelState(api: IApiClient): Promise<{
   return { entries: rows, catalogKeys };
 }
 
-/** Map every provider display name to its route and settings namespace. */
-async function providerDirectory(api: IApiClient): Promise<Map<string, ProviderInfo>> {
+/** Map every provider display name and route id to its settings namespace. */
+async function providerDirectory(api: IApiClient): Promise<ProviderDirectory> {
   const response = await api.llm.providers({});
-  if (!response.result.ok) return new Map();
-  const providers = new Map<string, ProviderInfo>();
+  if (!response.result.ok) return { byDisplay: new Map(), byRoute: new Map() };
+  const byDisplay = new Map<string, ProviderInfo>();
+  const byRoute = new Map<string, ProviderInfo>();
   for (const provider of response.result.value.providers) {
+    const info: ProviderInfo = { provider: provider.provider, settingsNs: provider.settingsNs };
+    byRoute.set(provider.provider, info);
     if (typeof provider.displayName === 'string' && provider.displayName.length > 0) {
-      providers.set(provider.displayName, { provider: provider.provider, settingsNs: provider.settingsNs });
+      byDisplay.set(provider.displayName, info);
     }
   }
-  return providers;
+  return { byDisplay, byRoute };
 }
 
 /**
@@ -441,7 +523,7 @@ export function startModelCatalogInjection(
 ): () => void {
   let entries: Array<{ provider: string; model: string }> = [];
   let catalogKeys: Set<string> = new Set();
-  let providersByDisplay: Map<string, ProviderInfo> = new Map();
+  let directory: ProviderDirectory = { byDisplay: new Map(), byRoute: new Map() };
   const pending: PendingMap = new Map();
   let scheduled = false;
   let refreshTimer: number | undefined;
@@ -452,7 +534,7 @@ export function startModelCatalogInjection(
     // Rows saved since the last sweep get their pending marks written first.
     const applied = await applyPendingMarks(api, entries, pending).catch(() => false);
     if (disposed) return;
-    sweep(api, t, entries, catalogKeys, providersByDisplay, pending);
+    sweep(api, t, entries, catalogKeys, directory, pending);
     // The writes may have changed the document; let the debounced re-read
     // refresh entries so the next sweep rebuilds those rows as saved.
     if (applied) schedule();
@@ -479,22 +561,27 @@ export function startModelCatalogInjection(
       if (disposed) return;
       void Promise.all([piAiModelState(api), providerDirectory(api)]).then(([state, providers]) => {
         if (disposed) return;
-        const changed = state.entries.length !== entries.length
+        const directoryChanged = state.entries.length !== entries.length
           || state.catalogKeys.size !== catalogKeys.size
-          || providers.size !== providersByDisplay.size
+          || providers.byDisplay.size !== directory.byDisplay.size
+          || providers.byRoute.size !== directory.byRoute.size
           || state.entries.some((entry, index) => {
             const current = entries[index];
             return current === undefined || current.provider !== entry.provider || current.model !== entry.model;
           })
           || [...state.catalogKeys].some((key) => !catalogKeys.has(key))
-          || [...providers.entries()].some(([display, info]) => {
-            const current = providersByDisplay.get(display);
+          || [...providers.byDisplay.entries()].some(([display, info]) => {
+            const current = directory.byDisplay.get(display);
+            return current === undefined || current.provider !== info.provider || current.settingsNs !== info.settingsNs;
+          })
+          || [...providers.byRoute.entries()].some(([route, info]) => {
+            const current = directory.byRoute.get(route);
             return current === undefined || current.provider !== info.provider || current.settingsNs !== info.settingsNs;
           });
-        if (changed) {
+        if (directoryChanged) {
           entries = state.entries;
           catalogKeys = state.catalogKeys;
-          providersByDisplay = providers;
+          directory = providers;
           run();
         }
       }).catch(() => { /* keep the last known rows */ });
@@ -506,7 +593,7 @@ export function startModelCatalogInjection(
       if (disposed) return;
       entries = state.entries;
       catalogKeys = state.catalogKeys;
-      providersByDisplay = providers;
+      directory = providers;
       schedule();
     }).catch(() => { /* keep the last known rows */ });
   };
@@ -514,11 +601,26 @@ export function startModelCatalogInjection(
   refreshEntries();
   const observer = new MutationObserver(schedule);
   observer.observe(document.body, { childList: true, subtree: true });
+  // The custom-provider create card keeps its route in a controlled input;
+  // typing there does not change child nodes, so listen for the identity
+  // fields explicitly and let the debounced refresh catch up.
+  const onIdentityInput = (event: Event): void => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    const label = target.getAttribute('aria-label');
+    if (label !== null && (
+      PROVIDER_ROUTE_LABELS.includes(label)
+      || PROVIDER_SELECT_LABELS.includes(label)
+      || isModelIdInput(target)
+    )) schedule();
+  };
+  document.addEventListener('input', onIdentityInput, true);
   schedule();
 
   return () => {
     disposed = true;
     if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
     observer.disconnect();
+    document.removeEventListener('input', onIdentityInput, true);
   };
 }
