@@ -105,6 +105,10 @@ export const zh = {
   compactPickerLabel: '压缩模型',
   /** Engine reuse explanation. */
   compactUsage: '开启但没有完整 provider/model route 时保持现有 pass-through 行为。`engine` 没有第三个模型选择器；启用压缩引擎时，它复用这里的 compact 路由。',
+  /** Compaction threshold slider label. */
+  compactThresholdLabel: '压缩阈值',
+  /** Compaction threshold behavior note. */
+  compactThresholdHint: '上下文使用率达到该阈值后触发压缩。可选范围 17%–99%（必须高于保留比例，默认保留 16%）；保存后会启用压缩引擎；若已加载默认压缩插件，需要先移除它，该引擎才会接管压缩。',
   /** Approval feature card heading. */
   approveTitle: '审批模型',
   /** Approval feature card explanation. */
@@ -203,6 +207,8 @@ export const en: Record<AuxiliaryKey, string> = {
   compactToggle: 'Enable auxiliary compaction route',
   compactPickerLabel: 'Compaction model',
   compactUsage: 'An enabled feature without a complete provider/model route keeps the existing pass-through behavior. `engine` has no third model picker; when enabled, the compression engine reuses this compact route.',
+  compactThresholdLabel: 'Compaction threshold',
+  compactThresholdHint: 'Compaction triggers when context usage reaches this threshold. Supported range: 17%–99% (must stay above the retention ratio, 16% by default). Saving enables the auxiliary compression engine; if the default compaction plugin is loaded, remove it first so this engine takes over.',
   approveTitle: 'Approval model',
   approveDescription: 'Hookup for the @dsh-plugin/dsh-approve-for-me plugin: once that plugin is installed and review mode is active, its approval reviews run on the dedicated model selected here instead of inheriting the session\'s main model.',
   approveToggle: 'Enable approval-model routing',

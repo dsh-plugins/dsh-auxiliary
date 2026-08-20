@@ -6,7 +6,15 @@
  *
  * @module dsh-auxiliary/client/AuxiliarySection
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react';
 import type { IApiClient } from '@deepseek-ai/dsh-client-connection/client';
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots';
 import type { SettingsSectionOwnerProps } from '@deepseek-ai/dsh-client-ui-settings/client';
@@ -124,6 +132,41 @@ const saveRowStyle: CSSProperties = {
   marginTop: 2,
 };
 
+const thresholdRowStyle: CSSProperties = {
+  alignItems: 'center',
+  display: 'flex',
+  gap: 10,
+};
+
+const thresholdRangeStyle: CSSProperties = {
+  flex: 1,
+  margin: 0,
+  minWidth: 0,
+};
+
+const thresholdInputStyle: CSSProperties = {
+  background: 'var(--dsw-alias-bg-layer-1)',
+  border: '1px solid var(--dsw-alias-border-l2)',
+  borderRadius: 6,
+  boxSizing: 'border-box',
+  color: 'var(--dsw-alias-label-primary)',
+  flexShrink: 0,
+  font: 'inherit',
+  fontSize: 13,
+  height: 28,
+  lineHeight: '18px',
+  padding: '0 8px',
+  textAlign: 'right',
+  width: 58,
+};
+
+const thresholdPercentStyle: CSSProperties = {
+  color: 'var(--dsw-alias-label-secondary)',
+  flexShrink: 0,
+  fontSize: 13,
+  lineHeight: '20px',
+};
+
 const saveStyle: CSSProperties = {
   background: 'var(--dsw-alias-button-primary-fill)',
   border: 'none',
@@ -157,6 +200,78 @@ function errorMessage(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
 }
 
+/** Lowest threshold the UI offers; the engine keeps 16% of context, so the
+ * threshold must stay above that default retention ratio. */
+const THRESHOLD_MIN_PERCENT = 17;
+const THRESHOLD_MAX_PERCENT = 99;
+
+/** A range slider plus a precise percentage input for the compaction threshold. */
+function ThresholdControl({
+  value,
+  onChange,
+  disabled,
+  label,
+  hint,
+}: {
+  value: number;
+  onChange: (value: number) => void;
+  disabled: boolean;
+  label: string;
+  hint: string;
+}): JSX.Element {
+  const [text, setText] = useState<string>(String(Math.round(value * 100)));
+  useEffect(() => {
+    setText(String(Math.round(value * 100)));
+  }, [value]);
+
+  const commitText = (raw: string): void => {
+    const digits = raw.replace(/\D/g, '').slice(0, 3);
+    setText(digits);
+    if (digits.length === 0) return;
+    const percent = Number(digits);
+    if (percent >= THRESHOLD_MIN_PERCENT && percent <= THRESHOLD_MAX_PERCENT) onChange(percent / 100);
+  };
+
+  const commitBlur = (): void => {
+    const digits = text.replace(/\D/g, '');
+    const percent = digits.length === 0
+      ? Math.round(value * 100)
+      : Math.min(THRESHOLD_MAX_PERCENT, Math.max(THRESHOLD_MIN_PERCENT, Number(digits)));
+    setText(String(percent));
+    onChange(percent / 100);
+  };
+
+  return (
+    <label style={fieldStyle}>
+      <span style={labelStyle}>{label}</span>
+      <div style={thresholdRowStyle}>
+        <input
+          type="range"
+          aria-label={label}
+          min={THRESHOLD_MIN_PERCENT}
+          max={THRESHOLD_MAX_PERCENT}
+          step={1}
+          value={Math.round(value * 100)}
+          disabled={disabled}
+          style={thresholdRangeStyle}
+          onChange={(event) => { onChange(Number(event.target.value) / 100); }}
+        />
+        <input
+          aria-label={`${label}数值`}
+          inputMode="numeric"
+          value={text}
+          disabled={disabled}
+          style={thresholdInputStyle}
+          onChange={(event) => { commitText(event.target.value); }}
+          onBlur={commitBlur}
+        />
+        <span style={thresholdPercentStyle}>%</span>
+      </div>
+      <p style={usageStyle}>{hint}</p>
+    </label>
+  );
+}
+
 /** Translate structured save failures while preserving ordinary diagnostics. */
 function saveErrorMessage(cause: unknown, t: TranslateNS<'dsh-auxiliary'>): string {
   if (cause instanceof AuxiliaryApiError) {
@@ -175,6 +290,8 @@ interface FeatureCardProps {
   usage: string;
   /** Optional second checkbox label; only the vision card passes it. */
   handoffLabel?: string;
+  /** Extra feature-specific controls rendered above the usage note. */
+  children?: ReactNode;
   initial: AuxFeatureSettings;
   groups: ModelCatalog['groups'];
   /** Optional restricted model list; the image-generation card passes models marked for generation. */
@@ -193,6 +310,7 @@ function FeatureCard({
   pickerLabel,
   usage,
   handoffLabel,
+  children,
   initial,
   groups,
   groupsOverride,
@@ -280,6 +398,7 @@ function FeatureCard({
           listLabel={t('pickerListLabel')}
         />
       </label>
+      {children}
       <p style={usageStyle}>{usage}</p>
       <div style={saveRowStyle}>
         <button
@@ -307,18 +426,24 @@ export function AuxiliarySection({ api, t }: AuxiliarySectionProps): JSX.Element
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | undefined>();
   const [writingFeature, setWritingFeature] = useState<AuxFeature | undefined>();
+  const [threshold, setThreshold] = useState<number | undefined>();
   const writeQueue = useRef<Promise<void>>(Promise.resolve());
   const revisionRef = useRef<number | undefined>();
+  const thresholdRef = useRef<number | undefined>();
 
   const adoptSettings = useCallback((next: AuxSettings): void => {
     revisionRef.current = next.revision;
+    thresholdRef.current = next.engine.thresholdRatio;
     setRevision(next.revision);
+    setThreshold(next.engine.thresholdRatio);
     setSettings(next);
   }, []);
 
   const adoptSnapshot = useCallback((next: AuxSettingsSnapshot): void => {
     revisionRef.current = next.revision;
+    thresholdRef.current = next.engine.thresholdRatio;
     setRevision(next.revision);
+    setThreshold(next.engine.thresholdRatio);
     setSettings((previous) => previous === undefined
       ? previous
       : {
@@ -329,6 +454,7 @@ export function AuxiliarySection({ api, t }: AuxiliarySectionProps): JSX.Element
         subagent: next.subagent,
         title: next.title,
         imagegen: next.imagegen,
+        engine: next.engine,
         revision: next.revision,
       });
   }, []);
@@ -382,7 +508,13 @@ export function AuxiliarySection({ api, t }: AuxiliarySectionProps): JSX.Element
     await previousWrite;
     setWritingFeature(feature);
     try {
-      const next = await saveAuxFeature(api, feature, draft, revisionRef.current);
+      const next = await saveAuxFeature(
+        api,
+        feature,
+        draft,
+        revisionRef.current,
+        feature === 'compact' ? thresholdRef.current : undefined,
+      );
       adoptSnapshot(next);
     } catch (cause) {
       const actualRevision = conflictRevision(cause);
@@ -464,7 +596,20 @@ export function AuxiliarySection({ api, t }: AuxiliarySectionProps): JSX.Element
             disabled={cardsDisabled}
             t={t}
             onSave={saveFeature}
-          />
+          >
+            {threshold !== undefined ? (
+              <ThresholdControl
+                value={threshold}
+                onChange={(value) => {
+                  thresholdRef.current = value;
+                  setThreshold(value);
+                }}
+                disabled={cardsDisabled}
+                label={t('compactThresholdLabel')}
+                hint={t('compactThresholdHint')}
+              />
+            ) : null}
+          </FeatureCard>
           <FeatureCard
             feature="approve"
             title={t('approveTitle')}

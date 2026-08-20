@@ -105,6 +105,8 @@ compact:
 
 **压缩引擎**（可选）：`engine.enabled: true` 会用 `BasicCompactionEngine` 子类替换默认压缩后端，以显式的上下文压缩指令驱动摘要（见 `engine.compressPrompt`）。它复用 compact 路由，不增加第三条模型路由；与 `@deepseek-ai/dsh-compaction-basic` 互斥——插件检测到冲突会跳过引擎并告警。
 
+**压缩阈值**：上下文压缩卡片提供滑条和右侧的百分比输入框（17%–99%）。保存阈值会同时启用压缩引擎并写入 `engine.thresholdRatio`，上下文使用率达到该比例后自动触发压缩；阈值必须高于保留比例（`engine.retainRatio`，默认 16%）。引擎会在每次压缩检查前读取最新配置，因此保存后无需重启。
+
 ### 审批模型（@dsh-plugin/dsh-approve-for-me 联动）
 
 [@dsh-plugin/dsh-approve-for-me](https://github.com/dsh-plugins/dsh-approve-for-me) 提供类 Codex 的自动审批；在 `review` 模式下由轻量审查模型裁决每条审批提示。**审批模型** 卡片为审查提供独立模型：

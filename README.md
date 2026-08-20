@@ -108,6 +108,8 @@ The listener is always installed and is a pure pass-through until a complete rou
 
 **Compression engine** *(optional)*: `engine.enabled: true` replaces the stock compaction backend with a `BasicCompactionEngine` subclass that drives summarization with an explicit context-compression instruction (see `engine.compressPrompt`). It reuses the compact route and adds no third model route. It is mutually exclusive with `@deepseek-ai/dsh-compaction-basic` — the plugin detects the conflict and skips the engine with a warning.
 
+**Compaction threshold**: the Context compaction card exposes a slider plus a precise percentage input (17%–99%). Saving the threshold also enables the compression engine and writes `engine.thresholdRatio`, so compaction fires automatically once context usage reaches that percentage; the threshold must stay above the retention ratio (`engine.retainRatio`, 16% by default). The engine refreshes the policy before every pressure check, so no restart is needed after saving.
+
 ### Approval model (@dsh-plugin/dsh-approve-for-me hookup)
 
 [@dsh-plugin/dsh-approve-for-me](https://github.com/dsh-plugins/dsh-approve-for-me) adds codex-style auto-approval; in `review` mode a lightweight reviewer model decides each approval prompt. The **Approval model** card gives the review a dedicated model:

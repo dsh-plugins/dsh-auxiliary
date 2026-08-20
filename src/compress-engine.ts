@@ -12,12 +12,17 @@
  * @module dsh-auxiliary/compress-engine
  */
 import type { Context } from '@deepseek-ai/cordis';
-import { BasicCompactionEngine, type BasicCompactionConfig } from '@deepseek-ai/dsh-compaction-basic';
+import {
+  BasicCompactionEngine,
+  type BasicCompactionConfig,
+  type ResolvedConfig,
+} from '@deepseek-ai/dsh-compaction-basic';
+import type { CompactionResult, CompactionTrigger } from '@deepseek-ai/dsh-compaction';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import { BlockAssembler, createUserMessage, type ContentBlock, type Message, type TokenUsage, type ToolSchema } from '@deepseek-ai/dsh-llm';
 import { PLUGIN_NAME } from './config.js';
 import { compactRoute } from './compact-router.js';
-import type { ResolvedPluginConfig } from './config.js';
+import type { ResolvedEngineConfig, ResolvedPluginConfig } from './config.js';
 
 /** Structural mirror of the base hook's input type. */
 interface CompressInput {
@@ -62,16 +67,48 @@ function finishError(finish: { kind: string; failure?: { message: string; code: 
 export class CompressEngine extends BasicCompactionEngine {
   private readonly compressPrompt: string;
   private readonly auxRoute: () => { provider: string; model: string } | undefined;
+  private readonly getEngineConfig: () => ResolvedEngineConfig;
 
   constructor(
     ctx: Context,
     config: BasicCompactionConfig | undefined,
     compressPrompt: string,
-    auxRoute: () => { provider: string; model: string } | undefined
+    auxRoute: () => { provider: string; model: string } | undefined,
+    getEngineConfig: () => ResolvedEngineConfig
   ) {
     super(ctx, config);
     this.compressPrompt = compressPrompt;
     this.auxRoute = auxRoute;
+    this.getEngineConfig = getEngineConfig;
+  }
+
+  /**
+   * Refresh the pressure policy right before a check so settings-page edits to
+   * the compaction threshold apply without restarting or rebuilding listeners.
+   */
+  private syncEngineConfig(): void {
+    const engine = this.getEngineConfig();
+    const next: ResolvedConfig = {
+      thresholdRatio: engine.thresholdRatio,
+      retainRatio: engine.retainRatio,
+      maxTokens: engine.maxTokens,
+      compactionRetries: engine.compactionRetries,
+      maxOverflowRetries: engine.maxOverflowRetries,
+      summarizationProvider: '',
+      summarizationModel: '',
+      modelPolicies: [],
+      auto: true,
+    };
+    (this as unknown as { config: ResolvedConfig }).config = next;
+  }
+
+  override compactIfNeeded(
+    agent: Agent,
+    trigger: CompactionTrigger,
+    signal: AbortSignal,
+  ): Promise<CompactionResult | null> {
+    this.syncEngineConfig();
+    return super.compactIfNeeded(agent, trigger, signal);
   }
 
   protected override async summarize(input: CompressInput, agent: Agent, signal?: AbortSignal): Promise<CompressResult> {
@@ -121,13 +158,13 @@ export class CompressEngine extends BasicCompactionEngine {
 }
 
 /** Install the engine unless `ctx.compaction` is already provided (the stock */
-export function installCompressionEngine(ctx: Context, get: () => ResolvedPluginConfig): void {
+export function installCompressionEngine(ctx: Context, get: () => ResolvedPluginConfig): CompressEngine | undefined {
   if (ctx.get('compaction') !== undefined) {
     ctx.logger.warn('dsh-auxiliary: compression engine skipped — ctx.compaction is already provided by dsh-compaction-basic; remove that plugin to enable the auxiliary compression engine');
-    return;
+    return undefined;
   }
   const engine = get().engine;
-  new CompressEngine(
+  return new CompressEngine(
     ctx,
     {
       thresholdRatio: engine.thresholdRatio,
@@ -138,6 +175,7 @@ export function installCompressionEngine(ctx: Context, get: () => ResolvedPlugin
       auto: engine.auto
     },
     engine.compressPrompt,
-    () => compactRoute(get)
+    () => compactRoute(get),
+    () => get().engine
   );
 }

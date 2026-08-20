@@ -17,7 +17,7 @@ import { registerApproveRouter, registerApproveStateEndpoint, isApprovePluginIns
 import { registerSubagentRouter } from './subagent-router.js';
 import { installTitleRouter, titleRoute } from './title-router.js';
 import { installCompactRouter } from './compact-router.js';
-import { installCompressionEngine } from './compress-engine.js';
+import { CompressEngine, installCompressionEngine } from './compress-engine.js';
 import { registerImagegenTool } from './imagegen-tool.js';
 
 export { Config, PLUGIN_NAME, resolvePluginConfig } from './config.js';
@@ -164,6 +164,15 @@ export function apply(ctx: Context, config: PluginConfig): void {
     disposeImagegenTool();
   };
 
+  // The compression engine is installed lazily from settings so a threshold
+  // change on the Auxiliary Models page can enable it without a restart. Once
+  // installed it re-reads the policy before every pressure check.
+  let compressionEngine: CompressEngine | undefined;
+  const reconcileCompressionEngine = (): void => {
+    if (!resolved().engine.enabled || compressionEngine !== undefined) return;
+    compressionEngine = installCompressionEngine(ctx, resolved);
+  };
+
   // The title router mirrors the compaction router: always installed, but a
   // pure pass-through until a complete route is configured.
   const disposeTitleRouter = installTitleRouter(ctx, resolved);
@@ -181,6 +190,7 @@ export function apply(ctx: Context, config: PluginConfig): void {
     disposeImagegenTool();
     disposeTitleRouter();
     approveStateDisposer();
+    compressionEngine = undefined;
   }, 'dsh-auxiliary: vision tool, handoff, and approval-router lifecycle');
 
   installSettingsSection(ctx, NS, Config, config, {
@@ -192,6 +202,7 @@ export function apply(ctx: Context, config: PluginConfig): void {
       reconcileHandoff();
       reconcileApproveRouter();
       reconcileImagegenTool();
+      reconcileCompressionEngine();
     },
     validate: resolvePluginConfig
   });
@@ -202,7 +213,5 @@ export function apply(ctx: Context, config: PluginConfig): void {
   reconcileSubagentRouter();
   reconcileImagegenTool();
   installCompactRouter(ctx, resolved);
-  if (resolved().engine.enabled) {
-    installCompressionEngine(ctx, resolved);
-  }
+  reconcileCompressionEngine();
 }

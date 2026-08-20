@@ -53,6 +53,14 @@ export interface AuxFeatureSettings extends AuxRoute {
   handoff?: boolean;
 }
 
+/** The optional compression-engine policy surfaced by the compaction card. */
+export interface AuxEngineSettings {
+  /** Whether the auxiliary compression engine handles pressure. */
+  enabled: boolean;
+  /** Context-usage fraction at which automatic compaction triggers. */
+  thresholdRatio: number;
+}
+
 /** Complete decoded auxiliary namespace state used by the settings page. */
 export interface AuxSettings {
   /** `tool.enabled` plus the `vision` provider/model route. */
@@ -67,6 +75,8 @@ export interface AuxSettings {
   title: AuxFeatureSettings;
   /** `imagegen.enabled` plus the auxiliary image-generation provider/model route. */
   imagegen: AuxFeatureSettings;
+  /** Compression-engine policy edited from the compaction card. */
+  engine: AuxEngineSettings;
   /** Namespace revision for the next optimistic-concurrency write. */
   revision?: number;
   /** Whether the namespace is exposed by the current Host. */
@@ -83,6 +93,7 @@ export interface AuxSettingsSnapshot {
   subagent: AuxFeatureSettings;
   title: AuxFeatureSettings;
   imagegen: AuxFeatureSettings;
+  engine: AuxEngineSettings;
   revision: number;
 }
 
@@ -467,6 +478,10 @@ interface AuxNamespaceValue {
     provider?: string;
     model?: string;
   };
+  engine?: {
+    enabled?: boolean;
+    thresholdRatio?: number;
+  };
 }
 
 /** Read the schema-resolved auxiliary value from a wire namespace view. */
@@ -509,6 +524,10 @@ function snapshotOf(view: SettingsNamespaceView): AuxSettingsSnapshot {
       provider: value.imagegen?.provider,
       model: value.imagegen?.model,
     },
+    engine: {
+      enabled: value.engine?.enabled ?? false,
+      thresholdRatio: value.engine?.thresholdRatio ?? 0.8,
+    },
     revision: view.revision,
   };
 }
@@ -525,6 +544,7 @@ export async function loadAuxSettings(api: IApiClient): Promise<AuxSettings> {
       subagent: { enabled: false },
       title: { enabled: false },
       imagegen: { enabled: false },
+      engine: { enabled: false, thresholdRatio: 0.8 },
       available: false,
       writable: value.writable,
     };
@@ -560,15 +580,27 @@ function normalizedDraft(draft: AuxFeatureDraft): { enabled: boolean; provider: 
   };
 }
 
+/** Preserve unrelated engine fields while the UI edits threshold/enabled. */
+async function loadRawAuxEngine(
+  api: IApiClient,
+): Promise<AuxNamespaceValue['engine']> {
+  const settings = valueOf(await api.settings.describe({}));
+  const namespace = settings.namespaces.find((entry) => entry.ns === 'dsh-auxiliary');
+  return namespace === undefined ? undefined : namespaceValue(namespace).engine;
+}
+
 /**
  * Atomically save one feature while preserving the other feature's namespace
  * fields. The returned snapshot is the complete post-write namespace value.
+ * Saving the compaction card with `engineThresholdRatio` also enables the
+ * auxiliary compression engine so the new threshold takes effect.
  */
 export async function saveAuxFeature(
   api: IApiClient,
   feature: AuxFeature,
   draft: AuxFeatureDraft,
   expectedRevision?: number,
+  engineThresholdRatio?: number,
 ): Promise<AuxSettingsSnapshot> {
   const normalized = normalizedDraft(draft);
   const patch = feature === 'vision'
@@ -614,13 +646,23 @@ export async function saveAuxFeature(
                 model: normalized.model,
               },
             }
-            : {
-              compact: {
+            : await (async () => {
+              const compact = {
                 enabled: normalized.enabled,
                 provider: normalized.provider,
                 model: normalized.model,
-              },
-            };
+              };
+              if (engineThresholdRatio === undefined) return { compact };
+              const rawEngine = await loadRawAuxEngine(api);
+              return {
+                compact,
+                engine: {
+                  ...(rawEngine ?? {}),
+                  enabled: true,
+                  thresholdRatio: engineThresholdRatio,
+                },
+              };
+            })();
   const view = valueOf(await api.settings.update({
     ns: 'dsh-auxiliary',
     patch,
