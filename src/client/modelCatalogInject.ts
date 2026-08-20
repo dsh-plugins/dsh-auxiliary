@@ -63,10 +63,19 @@ const MARK_IMAGE_GEN = 'data-dsh-aux-image-gen';
 const MARK_DRAFT = 'data-dsh-aux-draft';
 /** aria-label prefixes of the model-id text input on both shipped languages. */
 const MODEL_ID_LABELS = ['模型 ID ', 'Model ID '];
+/** aria-label prefixes of the row capacity panel ("context window / max tokens"). */
+const CAPACITY_LABEL_PREFIXES = ['上下文窗口 ', 'Context window ', '最大输出 token ', 'Max output tokens '];
 /** aria-label of the custom-provider create card's future route input. */
 const PROVIDER_ROUTE_LABELS = ['Provider ID'];
 /** aria-label of the add-provider flow's route select on both shipped languages. */
 const PROVIDER_SELECT_LABELS = ['提供方', 'Provider'];
+
+/**
+ * Last non-empty model id seen per model-id input. The capacity disclosure
+ * removes the injected block while collapsed, so this survives id edits made
+ * with the panel closed and lets the capability marks follow a renamed model.
+ */
+const lastRowKeyByInput = new WeakMap<Element, string>();
 
 /** Copy keys one injected capability checkbox renders. */
 type CapabilityCopyKey =
@@ -302,6 +311,7 @@ function buildCapabilityBlock(
   block.style.display = 'flex';
   block.style.flexDirection = 'column';
   block.style.gap = '4px';
+  block.style.gridColumn = '1 / -1';
   block.style.marginTop = '8px';
   block.style.padding = '8px 4px 2px';
   for (const spec of CAPABILITIES) block.append(buildCheckbox(api, t, provider, model, spec, draft, pending));
@@ -324,6 +334,22 @@ function buildNotice(t: TranslateNS<'dsh-auxiliary'>, key: 'imageCapabilityUnsup
 function entryOf(input: Element): HTMLElement | null {
   const entry = input.parentElement?.parentElement;
   return entry instanceof HTMLElement ? entry : null;
+}
+
+/**
+ * The row's capacity panel holding the "context window / max output tokens"
+ * fields. The page only renders it while that disclosure is expanded, so the
+ * capability checkboxes collapse together with the capacity inputs.
+ */
+function capacityPanelOf(entry: Element): HTMLElement | undefined {
+  for (const child of entry.children) {
+    if (child.getAttribute(MARK_BLOCK) !== null) continue;
+    const labels = [...child.querySelectorAll('input')]
+      .map((input) => input.getAttribute('aria-label') ?? '')
+      .filter((label) => CAPACITY_LABEL_PREFIXES.some((prefix) => label.startsWith(prefix)));
+    if (labels.length > 0) return child as HTMLElement;
+  }
+  return undefined;
 }
 
 /** Move pending marks from an old row key to the row's current key. */
@@ -350,6 +376,13 @@ function injectRow(
 ): void {
   const entry = entryOf(input);
   if (entry === null) return;
+  const panel = capacityPanelOf(entry);
+  if (panel === undefined) {
+    // The capacity disclosure is collapsed and its fields are not rendered;
+    // keep the marks pending and drop any stale block until it is expanded.
+    entry.querySelector(`[${MARK_BLOCK}]`)?.remove();
+    return;
+  }
   const key = rowKey(provider, model);
   const existing = entry.querySelector(`[${MARK_BLOCK}]`);
   if (existing !== null) {
@@ -373,7 +406,7 @@ function injectRow(
     existing.remove();
   }
   entry.querySelector(`[${MARK_NOTICE}]`)?.remove();
-  entry.append(buildCapabilityBlock(api, t, provider, model, draft, pending));
+  panel.append(buildCapabilityBlock(api, t, provider, model, draft, pending));
 }
 
 /** Inject the "cannot be marked yet" notice into one row, replacing any stale block. */
@@ -502,7 +535,8 @@ function sweep(
     if (info === undefined) continue;
     if (value.length === 0) {
       // Newly added row without an id: still show the two checkboxes so they
-      // are discoverable, disabled until the user types a model id.
+      // are discoverable, disabled until the user types a model id. Keep the
+      // last non-empty id recorded so clearing and retyping does not lose marks.
       if (info.settingsNs === 'llm-pi-ai') {
         injectRow(api, t, input, info.provider, '', true, entries, pending);
       } else {
@@ -510,6 +544,19 @@ function sweep(
       }
       continue;
     }
+    const key = rowKey(info.provider, value);
+    const previousKey = lastRowKeyByInput.get(input);
+    if (previousKey !== undefined && previousKey !== key && previousKey.slice(0, previousKey.indexOf('\u0000')) === info.provider) {
+      const previous = entries.find((row) => rowKey(row.provider, row.model) === previousKey);
+      if (previous !== undefined) {
+        const inherited: PendingFlags = {};
+        if (previous.imageInput !== undefined) inherited[MARK_IMAGE_INPUT] = previous.imageInput;
+        if (previous.imageGen !== undefined) inherited[MARK_IMAGE_GEN] = previous.imageGen;
+        pending.set(key, { ...inherited, ...pending.get(key) });
+      }
+      migratePending(pending, previousKey, key);
+    }
+    lastRowKeyByInput.set(input, key);
     const saved = entries.some((entry) => entry.provider === info.provider && entry.model === value);
     if (saved || info.settingsNs === 'llm-pi-ai') {
       // Saved row → checkboxes initialized from the document, with changes
@@ -517,7 +564,7 @@ function sweep(
       // provider → draft checkboxes (marks land after Apply). A catalog row
       // that is not saved yet cannot be persisted by the page, so it keeps a
       // notice.
-      const draft = !saved && info.settingsNs === 'llm-pi-ai' && !catalogKeys.has(rowKey(info.provider, value));
+      const draft = !saved && info.settingsNs === 'llm-pi-ai' && !catalogKeys.has(key);
       if (saved || draft) {
         injectRow(api, t, input, info.provider, value, draft, entries, pending);
         continue;

@@ -301,11 +301,12 @@ settings**:
   makes the model selectable in the **Image-generation model** card. Enable
   only when the upstream endpoint actually generates images.
 
-The checkboxes are injected into every user-owned `llm-pi-ai` model row and
-are always visible — no need to expand the row's capacity disclosure — and a
-model you are **adding** inside the custom-provider create card gets working
-checkboxes too. A row added without a model id shows both checkboxes disabled
-until an id is typed, and editing an existing model id carries its saved
+The checkboxes are injected into every user-owned `llm-pi-ai` model row, inside
+the same capacity disclosure as the **Context window** and **Max output tokens**
+fields, so they stay out of the way until that row fold is expanded. A model you
+are **adding** inside the custom-provider create card gets working checkboxes
+too; a row added without a model id shows both checkboxes disabled inside that
+fold until an id is typed, and editing an existing model id carries its saved
 capability marks to the new id. A changed mark is recorded in the browser first
 and written after the page saves the provider settings (Apply), so you can edit
 other model fields alongside image capabilities without tripping the page's own
