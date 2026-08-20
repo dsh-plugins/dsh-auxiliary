@@ -41,6 +41,36 @@ export const zh = {
   imageCapabilityPending: '保存提供方设置后生效。',
   /** Shown on a newly added model row before a model id has been typed. */
   imageCapabilityNeedsModelId: '填写模型 ID 后可标记图片能力。',
+  /** Thinking-level editor title. */
+  thinkingLevelsTitle: '思考强度',
+  /** Thinking-level editor explanation. */
+  thinkingLevelsHint: '可选档位：off、minimal、low、medium、high、xhigh、max。',
+  /** Thinking-level pending hint. */
+  thinkingLevelsPending: '保存提供方设置后生效。',
+  /** Thinking-level empty list label. */
+  thinkingLevelsEmpty: '未配置',
+  /** One thinking-level list row input label. */
+  thinkingLevelsItem: '思考强度',
+  /** Thinking-level list row placeholder. */
+  thinkingLevelsItemPlaceholder: '如 low',
+  /** Single-level add button label. */
+  thinkingLevelsAdd: '添加思考强度',
+  /** Bulk editor pencil button label. */
+  thinkingLevelsBulk: '批量编辑',
+  /** Bulk editor dialog heading. */
+  thinkingLevelsBulkTitle: '批量输入思考强度',
+  /** Bulk editor input placeholder/label. */
+  thinkingLevelsBulkPlaceholder: '[low, high, max]',
+  /** Bulk/default validation error. */
+  thinkingLevelsInvalid: '格式无效，仅支持档位：off、minimal、low、medium、high、xhigh、max，例如 [low, high, max]。',
+  /** Default thinking-level select label. */
+  thinkingLevelsDefault: '默认思考强度',
+  /** Remove one level from the list. */
+  thinkingLevelsRemove: '移除',
+  /** Bulk editor confirm button. */
+  thinkingLevelsConfirm: '确认',
+  /** Bulk editor cancel button. */
+  thinkingLevelsCancel: '取消',
   /** Injected model-catalog checkbox label for image generation. */
   imageGenToggle: '允许图片生成',
   /** Injected model-catalog checkbox explanation for image generation. */
@@ -141,6 +171,21 @@ export const en: Record<AuxiliaryKey, string> = {
   imageCapabilityLoading: 'Reading the image-input declaration…',
   imageCapabilityPending: 'Applies after you save the provider settings.',
   imageCapabilityNeedsModelId: 'Enter a model ID to mark image capabilities.',
+  thinkingLevelsTitle: 'Thinking levels',
+  thinkingLevelsHint: 'Levels: off, minimal, low, medium, high, xhigh, max.',
+  thinkingLevelsPending: 'Applies after you save the provider settings.',
+  thinkingLevelsEmpty: 'Not configured',
+  thinkingLevelsItem: 'Thinking level',
+  thinkingLevelsItemPlaceholder: 'e.g. low',
+  thinkingLevelsAdd: 'Add thinking level',
+  thinkingLevelsBulk: 'Edit list',
+  thinkingLevelsBulkTitle: 'Enter thinking levels',
+  thinkingLevelsBulkPlaceholder: '[low, high, max]',
+  thinkingLevelsInvalid: 'Invalid format. Use only: off, minimal, low, medium, high, xhigh, max, e.g. [low, high, max].',
+  thinkingLevelsDefault: 'Default thinking level',
+  thinkingLevelsRemove: 'Remove',
+  thinkingLevelsConfirm: 'Confirm',
+  thinkingLevelsCancel: 'Cancel',
   imageGenToggle: 'Allow image generation',
   imageGenDescription: 'Marks the model as able to generate images, for auxiliary image-generation features to pick from.',
   imageGenLoading: 'Reading the image-generation declaration…',

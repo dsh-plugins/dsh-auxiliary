@@ -45,10 +45,19 @@
 import type { IApiClient } from '@deepseek-ai/dsh-client-connection/client';
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots';
 import {
+  IconEditOutline16,
+  IconPlusOutline16,
+  IconTrashOutline16,
+} from '@deepseek-ai/dsh-client-ui-primitives';
+import * as React from 'react';
+import { createRoot } from 'react-dom/client';
+import { ThinkingLevelSelect } from './ThinkingLevelSelect.js';
+import {
   loadModelGenerationCapability,
   loadModelImageCapability,
   saveModelGenerationCapability,
   saveModelImageCapability,
+  saveModelThinkingConfig,
 } from './api.js';
 
 /** Marker attribute on an injected capability block (one per model row). */
@@ -59,8 +68,14 @@ const MARK_NOTICE = 'data-dsh-aux-notice';
 const MARK_IMAGE_INPUT = 'data-dsh-aux-image-input';
 /** Marker attribute on an injected image-generation checkbox. */
 const MARK_IMAGE_GEN = 'data-dsh-aux-image-gen';
+/** Marker attribute on the injected thinking-levels section. */
+const MARK_THINKING_LEVELS = 'data-dsh-aux-thinking-levels';
+/** Marker attribute on the injected default-thinking-level field. */
+const MARK_DEFAULT_THINKING = 'data-dsh-aux-default-thinking';
 /** Marker attribute marking a block built for a not-yet-saved draft row. */
 const MARK_DRAFT = 'data-dsh-aux-draft';
+/** Every thinking level a pi-ai profile may declare, in escalation order. */
+const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
 /** aria-label prefixes of the model-id text input on both shipped languages. */
 const MODEL_ID_LABELS = ['模型 ID ', 'Model ID '];
 /** aria-label prefixes of the row capacity panel ("context window / max tokens"). */
@@ -125,7 +140,12 @@ interface CheckboxState {
 }
 
 /** Pending (not-yet-saved) marks of one new model row, keyed by capability mark. */
-type PendingFlags = Partial<Record<'data-dsh-aux-image-input' | 'data-dsh-aux-image-gen', boolean>>;
+interface PendingFlags {
+  'data-dsh-aux-image-input'?: boolean;
+  'data-dsh-aux-image-gen'?: boolean;
+  'data-dsh-aux-thinking-levels'?: readonly string[];
+  'data-dsh-aux-default-thinking'?: string | null;
+}
 
 /** Pending marks for every draft row, keyed by `provider\0model`. */
 type PendingMap = Map<string, PendingFlags>;
@@ -152,6 +172,10 @@ interface PiAiModelRow {
   imageInput?: boolean;
   /** Persisted image-generation flag on the raw user row. */
   imageGen?: boolean;
+  /** Persisted plugin-owned thinking-level list on the raw user row. */
+  thinkingLevels?: readonly string[];
+  /** Persisted plugin-owned default thinking level on the raw user row. */
+  defaultThinkingLevel?: string | null;
 }
 
 /** Narrow an unknown settings value to a plain record. */
@@ -295,6 +319,485 @@ function buildCheckbox(
   return box;
 }
 
+/** Whether one value is a pi-ai thinking level. */
+function isThinkingLevel(value: string): boolean {
+  return (THINKING_LEVELS as readonly string[]).includes(value);
+}
+
+/** Deduplicate and validate thinking levels, preserving declaration order. */
+function uniqueThinkingLevels(levels: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const level of levels) {
+    if (isThinkingLevel(level) && !seen.has(level)) {
+      seen.add(level);
+      result.push(level);
+    }
+  }
+  return result;
+}
+
+/**
+ * Parse the bulk editor's free text. Accepts `[low, high, max]`, JSON string
+ * arrays, and comma/space separated lists; returns undefined when any entry is
+ * not a valid thinking level or the list is empty.
+ */
+function parseThinkingLevelsText(raw: string): readonly string[] | undefined {
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return undefined;
+  let items: unknown;
+  try {
+    items = JSON.parse(trimmed);
+  } catch {
+    items = trimmed
+      .replace(/^\[|\]$/g, '')
+      .split(/[\s,，、;；]+/)
+      .map((part) => part.trim().replace(/^["']|["']$/g, ''))
+      .filter((part) => part.length > 0);
+  }
+  if (!Array.isArray(items) || !items.every((item) => typeof item === 'string')) return undefined;
+  const strings = items as readonly string[];
+  if (strings.some((item) => !isThinkingLevel(item))) return undefined;
+  const levels = uniqueThinkingLevels(strings);
+  return levels.length > 0 ? levels : undefined;
+}
+
+/** Mount a primitives icon into a native button host. */
+function mountIcon(host: HTMLElement, node: React.ReactNode): void {
+  createRoot(host).render(node);
+}
+
+/** A small inline-flex host that keeps icons visually centered. */
+function createIconHost(): HTMLSpanElement {
+  const host = document.createElement('span');
+  host.style.alignItems = 'center';
+  host.style.display = 'inline-flex';
+  return host;
+}
+
+/** Default thinking-level dropdown mounted through the platform Menu primitive. */
+function buildThinkingDropdown(
+  t: TranslateNS<'dsh-auxiliary'>,
+  disabled: boolean,
+  onChange: (value: string | null) => void,
+): { element: HTMLElement; update: (levels: readonly string[], value: string | null) => void } {
+  const host = document.createElement('div');
+  host.style.flex = '1';
+  host.style.maxWidth = '240px';
+  host.style.minWidth = '150px';
+  const root = createRoot(host);
+  let levels: readonly string[] = [];
+  let value: string | null = null;
+  const render = (): void => {
+    root.render(React.createElement(ThinkingLevelSelect, {
+      disabled,
+      emptyLabel: t('thinkingLevelsEmpty'),
+      label: t('thinkingLevelsDefault'),
+      levels,
+      onChange,
+      value,
+    }));
+  };
+  render();
+  return {
+    element: host,
+    update: (nextLevels, nextValue) => {
+      levels = nextLevels;
+      value = nextValue;
+      render();
+    },
+  };
+}
+
+/** Shared thinking-editor state of one injected block. */
+interface ThinkingEditorState {
+  levels: string[];
+  defaultLevel: string | null;
+  writable: boolean;
+  busy: boolean;
+  error: string | null;
+}
+
+/** Build the thinking-level editor appended to the model-row capability block. */
+function buildThinkingSection(
+  t: TranslateNS<'dsh-auxiliary'>,
+  provider: string,
+  model: string,
+  pending: PendingMap,
+  savedRow?: PiAiModelRow,
+): HTMLElement {
+  const key = rowKey(provider, model);
+  const empty = model.length === 0;
+  const pendingFlags = pending.get(key);
+  const state: ThinkingEditorState = {
+    levels: [...(pendingFlags?.[MARK_THINKING_LEVELS] ?? savedRow?.thinkingLevels ?? [])],
+    defaultLevel: pendingFlags && MARK_DEFAULT_THINKING in pendingFlags
+      ? pendingFlags[MARK_DEFAULT_THINKING] ?? null
+      : savedRow?.defaultThinkingLevel ?? null,
+    writable: !empty,
+    busy: false,
+    error: null,
+  };
+
+  const section = document.createElement('div');
+  section.setAttribute(MARK_THINKING_LEVELS, '');
+  section.style.display = 'flex';
+  section.style.flexDirection = 'column';
+  section.style.gap = '8px';
+  section.style.marginTop = '4px';
+  section.style.paddingTop = '4px';
+
+  const divider = document.createElement('div');
+  divider.style.borderTop = '1px solid var(--dsw-alias-border-l2)';
+  section.append(divider);
+
+  const titleRow = document.createElement('div');
+  titleRow.style.alignItems = 'baseline';
+  titleRow.style.display = 'flex';
+  titleRow.style.gap = '8px';
+  titleRow.style.justifyContent = 'space-between';
+
+  const title = document.createElement('span');
+  title.textContent = t('thinkingLevelsTitle');
+  title.style.color = 'var(--dsw-alias-label-secondary)';
+  title.style.fontSize = '12px';
+  title.style.fontWeight = '500';
+  title.style.lineHeight = '18px';
+  titleRow.append(title);
+
+  const hint = document.createElement('span');
+  hint.textContent = t('thinkingLevelsHint');
+  hint.style.color = 'var(--dsw-alias-label-tertiary)';
+  hint.style.fontSize = '12px';
+  hint.style.lineHeight = '18px';
+  titleRow.append(hint);
+  section.append(titleRow);
+
+  const list = document.createElement('div');
+  list.style.display = 'flex';
+  list.style.flexDirection = 'column';
+  list.style.gap = '6px';
+  section.append(list);
+
+  const styleInput = (input: HTMLInputElement): void => {
+    input.style.background = 'var(--dsw-alias-bg-layer-1)';
+    input.style.border = '1px solid var(--dsw-alias-border-l2)';
+    input.style.borderRadius = '8px';
+    input.style.boxSizing = 'border-box';
+    input.style.color = 'var(--dsw-alias-label-primary)';
+    input.style.font = 'inherit';
+    input.style.fontSize = '14px';
+    input.style.height = '32px';
+    input.style.lineHeight = '22px';
+    input.style.padding = '0 10px';
+  };
+  const styleButton = (button: HTMLButtonElement): void => {
+    button.style.background = 'transparent';
+    button.style.border = '1px solid var(--dsw-alias-border-l2)';
+    button.style.borderRadius = '14px';
+    button.style.boxSizing = 'border-box';
+    button.style.color = 'var(--dsw-alias-label-primary)';
+    button.style.cursor = 'pointer';
+    button.style.font = 'inherit';
+    button.style.fontSize = '12px';
+    button.style.height = '28px';
+    button.style.lineHeight = '18px';
+    button.style.padding = '0 10px';
+  };
+  const styleIconButton = (button: HTMLButtonElement): void => {
+    button.style.alignItems = 'center';
+    button.style.background = 'transparent';
+    button.style.border = '0';
+    button.style.borderRadius = '6px';
+    button.style.boxSizing = 'border-box';
+    button.style.color = 'var(--dsw-alias-label-tertiary)';
+    button.style.cursor = 'pointer';
+    button.style.display = 'inline-flex';
+    button.style.height = '28px';
+    button.style.justifyContent = 'center';
+    button.style.padding = '0';
+    button.style.width = '28px';
+  };
+
+  const renderList = (): void => {
+    list.textContent = '';
+    if (state.levels.length === 0) {
+      const emptyLabel = document.createElement('span');
+      emptyLabel.textContent = t('thinkingLevelsEmpty');
+      emptyLabel.style.color = 'var(--dsw-alias-label-tertiary)';
+      emptyLabel.style.fontSize = '12px';
+      emptyLabel.style.lineHeight = '18px';
+      list.append(emptyLabel);
+      return;
+    }
+    state.levels.forEach((level, index) => {
+      const row = document.createElement('div');
+      row.style.alignItems = 'center';
+      row.style.border = '1px solid var(--dsw-alias-border-l2)';
+      row.style.borderRadius = '8px';
+      row.style.boxSizing = 'border-box';
+      row.style.display = 'flex';
+      row.style.gap = '6px';
+      row.style.padding = '6px';
+      row.style.width = '100%';
+
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.value = level;
+      input.placeholder = t('thinkingLevelsItemPlaceholder');
+      input.setAttribute('aria-label', `${t('thinkingLevelsItem')} ${index + 1}`);
+      input.disabled = !state.writable || state.busy;
+      styleInput(input);
+      input.style.flex = '1';
+      input.style.minWidth = '0';
+      input.addEventListener('input', () => {
+        const value = input.value.trim();
+        state.levels[index] = value;
+        if (value.length > 0 && !isThinkingLevel(value)) {
+          state.error = t('thinkingLevelsInvalid');
+          errorText.textContent = state.error;
+          errorText.style.display = 'block';
+          return;
+        }
+        state.error = null;
+        errorText.style.display = 'none';
+        commit();
+      });
+      row.append(input);
+
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.setAttribute('aria-label', `${t('thinkingLevelsRemove')} ${index + 1}`);
+      remove.title = t('thinkingLevelsRemove');
+      remove.disabled = !state.writable || state.busy;
+      styleIconButton(remove);
+      const removeIconHost = createIconHost();
+      removeIconHost.style.display = 'inline-flex';
+      remove.append(removeIconHost);
+      mountIcon(removeIconHost, React.createElement(IconTrashOutline16, { size: 14 }));
+      remove.addEventListener('click', () => {
+        state.levels.splice(index, 1);
+        renderList();
+        commit();
+      });
+      row.append(remove);
+      list.append(row);
+    });
+  };
+
+  const actionsRow = document.createElement('div');
+  actionsRow.style.alignItems = 'center';
+  actionsRow.style.display = 'flex';
+  actionsRow.style.gap = '6px';
+
+  const addButton = document.createElement('button');
+  addButton.type = 'button';
+  addButton.disabled = !state.writable || state.busy;
+  styleButton(addButton);
+  addButton.style.alignItems = 'center';
+  addButton.style.display = 'inline-flex';
+  addButton.style.gap = '4px';
+  const plusHost = createIconHost();
+  plusHost.style.display = 'inline-flex';
+  mountIcon(plusHost, React.createElement(IconPlusOutline16, { size: 14 }));
+  const addLabel = document.createElement('span');
+  addLabel.textContent = t('thinkingLevelsAdd');
+  addButton.append(plusHost, addLabel);
+  addButton.addEventListener('click', () => {
+    if (!state.writable || state.busy) return;
+    state.levels = [...state.levels, ''];
+    renderList();
+  });
+  actionsRow.append(addButton);
+
+  const pencil = document.createElement('button');
+  pencil.type = 'button';
+  pencil.title = t('thinkingLevelsBulk');
+  pencil.setAttribute('aria-label', t('thinkingLevelsBulk'));
+  pencil.disabled = !state.writable || state.busy;
+  styleIconButton(pencil);
+  const pencilHost = createIconHost();
+  pencilHost.style.display = 'inline-flex';
+  pencil.append(pencilHost);
+  mountIcon(pencilHost, React.createElement(IconEditOutline16, { size: 14 }));
+  pencil.addEventListener('click', () => {
+    const existing = uniqueThinkingLevels(state.levels.filter((level) => level.length > 0));
+    const initial = existing.length > 0 ? `[${existing.join(', ')}]` : '';
+    openThinkingBulkPopup(t, initial, (levels) => {
+      state.levels = uniqueThinkingLevels([...state.levels.filter((level) => level.length > 0), ...levels]);
+      renderList();
+      commit();
+    });
+  });
+  actionsRow.append(pencil);
+  section.append(actionsRow);
+
+  const defaultRow = document.createElement('div');
+  defaultRow.style.alignItems = 'center';
+  defaultRow.style.display = 'flex';
+  defaultRow.style.gap = '8px';
+
+  const defaultLabel = document.createElement('label');
+  defaultLabel.textContent = t('thinkingLevelsDefault');
+  defaultLabel.style.color = 'var(--dsw-alias-label-tertiary)';
+  defaultLabel.style.fontSize = '12px';
+  defaultLabel.style.lineHeight = '18px';
+  defaultRow.append(defaultLabel);
+
+  const defaultDropdown = buildThinkingDropdown(t, !state.writable || state.busy, (value) => {
+    if (!state.writable || state.busy) return;
+    state.defaultLevel = value;
+    commit();
+  });
+  const renderDefaultOptions = (): void => {
+    defaultDropdown.update(uniqueThinkingLevels(state.levels.filter((entry) => entry.length > 0)), state.defaultLevel);
+  };
+  defaultRow.append(defaultDropdown.element);
+  section.append(defaultRow);
+
+  const errorText = document.createElement('span');
+  errorText.style.color = 'var(--dsw-alias-state-error-primary)';
+  errorText.style.display = 'none';
+  errorText.style.fontSize = '12px';
+  errorText.style.lineHeight = '18px';
+  section.append(errorText);
+
+  const commit = (): void => {
+    if (empty || state.busy) return;
+    const valid = uniqueThinkingLevels(state.levels.filter((level) => level.length > 0));
+    if (state.defaultLevel !== null && !valid.includes(state.defaultLevel)) state.defaultLevel = null;
+    pending.set(key, {
+      ...pending.get(key),
+      [MARK_THINKING_LEVELS]: valid,
+      [MARK_DEFAULT_THINKING]: state.defaultLevel,
+    });
+    hint.textContent = t('thinkingLevelsPending');
+    renderDefaultOptions();
+  };
+
+  renderList();
+  renderDefaultOptions();
+  return section;
+}
+
+/** Open the free-text bulk editor for thinking levels. */
+function openThinkingBulkPopup(
+  t: TranslateNS<'dsh-auxiliary'>,
+  initial: string,
+  onConfirm: (levels: readonly string[]) => void,
+): void {
+  const overlay = document.createElement('div');
+  overlay.style.alignItems = 'center';
+  overlay.style.background = 'rgba(0, 0, 0, 0.35)';
+  overlay.style.display = 'flex';
+  overlay.style.inset = '0';
+  overlay.style.justifyContent = 'center';
+  overlay.style.position = 'fixed';
+  overlay.style.zIndex = '2000';
+
+  const dialog = document.createElement('div');
+  dialog.style.background = 'var(--dsw-alias-bg-layer-1)';
+  dialog.style.border = '1px solid var(--dsw-alias-border-l2)';
+  dialog.style.borderRadius = '8px';
+  dialog.style.boxShadow = '0 12px 32px rgba(0, 0, 0, 0.18)';
+  dialog.style.boxSizing = 'border-box';
+  dialog.style.display = 'flex';
+  dialog.style.flexDirection = 'column';
+  dialog.style.gap = '10px';
+  dialog.style.padding = '16px';
+  dialog.style.width = 'min(420px, calc(100vw - 32px))';
+
+  const heading = document.createElement('span');
+  heading.textContent = t('thinkingLevelsBulkTitle');
+  heading.style.color = 'var(--dsw-alias-label-primary)';
+  heading.style.fontSize = '14px';
+  heading.style.fontWeight = '500';
+  heading.style.lineHeight = '22px';
+  dialog.append(heading);
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = initial;
+  input.placeholder = '[low, high, max]';
+  input.setAttribute('aria-label', t('thinkingLevelsBulkPlaceholder'));
+  input.style.background = 'var(--dsw-alias-bg-layer-1)';
+  input.style.border = '1px solid var(--dsw-alias-border-l2)';
+  input.style.borderRadius = '8px';
+  input.style.boxSizing = 'border-box';
+  input.style.color = 'var(--dsw-alias-label-primary)';
+  input.style.font = 'inherit';
+  input.style.fontSize = '14px';
+  input.style.height = '36px';
+  input.style.padding = '0 10px';
+  input.style.width = '100%';
+  dialog.append(input);
+
+  const error = document.createElement('span');
+  error.style.color = 'var(--dsw-alias-state-error-primary)';
+  error.style.display = 'none';
+  error.style.fontSize = '12px';
+  error.style.lineHeight = '18px';
+  dialog.append(error);
+
+  const actions = document.createElement('div');
+  actions.style.display = 'flex';
+  actions.style.gap = '8px';
+  actions.style.justifyContent = 'flex-end';
+
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.textContent = t('thinkingLevelsCancel');
+  cancel.style.background = 'transparent';
+  cancel.style.border = '1px solid var(--dsw-alias-border-l2)';
+  cancel.style.borderRadius = '6px';
+  cancel.style.color = 'var(--dsw-alias-label-primary)';
+  cancel.style.cursor = 'pointer';
+  cancel.style.font = 'inherit';
+  cancel.style.fontSize = '13px';
+  cancel.style.height = '30px';
+  cancel.style.padding = '0 12px';
+  cancel.addEventListener('click', () => overlay.remove());
+  actions.append(cancel);
+
+  const confirm = document.createElement('button');
+  confirm.type = 'button';
+  confirm.textContent = t('thinkingLevelsConfirm');
+  confirm.style.background = 'var(--dsw-alias-button-primary-fill)';
+  confirm.style.border = '0';
+  confirm.style.borderRadius = '6px';
+  confirm.style.color = 'var(--dsw-alias-label-primary-foreground)';
+  confirm.style.cursor = 'pointer';
+  confirm.style.font = 'inherit';
+  confirm.style.fontSize = '13px';
+  confirm.style.height = '30px';
+  confirm.style.padding = '0 12px';
+  const confirmBulk = (): void => {
+    const levels = parseThinkingLevelsText(input.value);
+    if (levels === undefined) {
+      error.textContent = t('thinkingLevelsInvalid');
+      error.style.display = 'block';
+      return;
+    }
+    onConfirm(levels);
+    overlay.remove();
+  };
+  confirm.addEventListener('click', confirmBulk);
+  actions.append(confirm);
+  dialog.append(actions);
+
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay) overlay.remove();
+  });
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') confirmBulk();
+    if (event.key === 'Escape') overlay.remove();
+  });
+
+  overlay.append(dialog);
+  document.body.append(overlay);
+  input.focus();
+}
+
 /** Build the always-visible capability block for one model row. */
 function buildCapabilityBlock(
   api: IApiClient,
@@ -303,6 +806,7 @@ function buildCapabilityBlock(
   model: string,
   draft: boolean,
   pending: PendingMap,
+  savedRow?: PiAiModelRow,
 ): HTMLElement {
   const block = document.createElement('div');
   block.setAttribute(MARK_BLOCK, `${provider}\u0000${model}`);
@@ -315,6 +819,7 @@ function buildCapabilityBlock(
   block.style.marginTop = '8px';
   block.style.padding = '8px 4px 2px';
   for (const spec of CAPABILITIES) block.append(buildCheckbox(api, t, provider, model, spec, draft, pending));
+  block.append(buildThinkingSection(t, provider, model, pending, savedRow));
   return block;
 }
 
@@ -360,6 +865,16 @@ function migratePending(pending: PendingMap, from: string, to: string): void {
   pending.delete(from);
 }
 
+/** Overlay a previous saved row's persisted capability/thinking marks. */
+function inheritRowFlags(previous: PiAiModelRow, pending: PendingMap, key: string): void {
+  const inherited: PendingFlags = {};
+  if (previous.imageInput !== undefined) inherited[MARK_IMAGE_INPUT] = previous.imageInput;
+  if (previous.imageGen !== undefined) inherited[MARK_IMAGE_GEN] = previous.imageGen;
+  if (previous.thinkingLevels !== undefined) inherited[MARK_THINKING_LEVELS] = previous.thinkingLevels;
+  if (previous.defaultThinkingLevel !== undefined) inherited[MARK_DEFAULT_THINKING] = previous.defaultThinkingLevel;
+  pending.set(key, { ...inherited, ...pending.get(key) });
+}
+
 /**
  * Inject checkboxes into one model row. A stale block (different model id or a
  * draft block that has since been saved) is rebuilt; a fresh one is kept.
@@ -395,18 +910,14 @@ function injectRow(
     // in this session, so editing an id does not reset the two checkboxes.
     if (existingKey !== null && existingKey !== key && existingKey.slice(0, existingKey.indexOf('\u0000')) === provider) {
       const previous = entries.find((row) => rowKey(row.provider, row.model) === existingKey);
-      if (previous !== undefined) {
-        const inherited: PendingFlags = {};
-        if (previous.imageInput !== undefined) inherited[MARK_IMAGE_INPUT] = previous.imageInput;
-        if (previous.imageGen !== undefined) inherited[MARK_IMAGE_GEN] = previous.imageGen;
-        pending.set(key, { ...inherited, ...pending.get(key) });
-      }
+      if (previous !== undefined) inheritRowFlags(previous, pending, key);
       migratePending(pending, existingKey, key);
     }
     existing.remove();
   }
   entry.querySelector(`[${MARK_NOTICE}]`)?.remove();
-  panel.append(buildCapabilityBlock(api, t, provider, model, draft, pending));
+  const savedRow = entries.find((row) => row.provider === provider && row.model === model);
+  panel.append(buildCapabilityBlock(api, t, provider, model, draft, pending, savedRow));
 }
 
 /** Inject the "cannot be marked yet" notice into one row, replacing any stale block. */
@@ -509,6 +1020,15 @@ async function applyPendingMarks(
       if (flags['data-dsh-aux-image-gen'] !== undefined) {
         await saveModelGenerationCapability(api, provider, model, flags['data-dsh-aux-image-gen']);
       }
+      if (flags['data-dsh-aux-thinking-levels'] !== undefined || flags['data-dsh-aux-default-thinking'] !== undefined) {
+        await saveModelThinkingConfig(
+          api,
+          provider,
+          model,
+          flags['data-dsh-aux-thinking-levels'] ?? [],
+          flags['data-dsh-aux-default-thinking'] ?? null,
+        );
+      }
     } catch {
       continue; // keep the pending mark; a later sweep retries.
     }
@@ -548,12 +1068,7 @@ function sweep(
     const previousKey = lastRowKeyByInput.get(input);
     if (previousKey !== undefined && previousKey !== key && previousKey.slice(0, previousKey.indexOf('\u0000')) === info.provider) {
       const previous = entries.find((row) => rowKey(row.provider, row.model) === previousKey);
-      if (previous !== undefined) {
-        const inherited: PendingFlags = {};
-        if (previous.imageInput !== undefined) inherited[MARK_IMAGE_INPUT] = previous.imageInput;
-        if (previous.imageGen !== undefined) inherited[MARK_IMAGE_GEN] = previous.imageGen;
-        pending.set(key, { ...inherited, ...pending.get(key) });
-      }
+      if (previous !== undefined) inheritRowFlags(previous, pending, key);
       migratePending(pending, previousKey, key);
     }
     lastRowKeyByInput.set(input, key);
@@ -606,6 +1121,10 @@ async function piAiModelState(api: IApiClient): Promise<{
         model: userRow.id,
         imageInput: declaresImageInput(resolvedModel ?? userRow, defaultInput),
         imageGen: userRow.imageGeneration === true,
+        thinkingLevels: Array.isArray(userRow.thinkingLevels)
+          ? userRow.thinkingLevels.filter((entry): entry is string => typeof entry === 'string')
+          : undefined,
+        defaultThinkingLevel: typeof userRow.defaultThinkingLevel === 'string' ? userRow.defaultThinkingLevel : undefined,
       });
     }
   }

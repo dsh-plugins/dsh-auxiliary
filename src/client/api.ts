@@ -327,6 +327,69 @@ export async function saveModelGenerationCapability(
 }
 
 /**
+ * Selectable thinking levels and the default level of one editable llm-pi-ai
+ * model. pi-ai has no schema fields for them, so both live in the user-owned
+ * raw row as plugin-owned `thinkingLevels` (string array) and
+ * `defaultThinkingLevel` (string or null), mirroring `imageGeneration`.
+ */
+export interface ModelThinkingConfig {
+  /** Whether the provider has a user-owned llm-pi-ai model row for this id. */
+  available: boolean;
+  /** Offered thinking levels (`low`, `high`, …), in declaration order. */
+  levels: readonly string[];
+  /** The default level, or null when unset. */
+  defaultLevel: string | null;
+  /** Whether the Host settings provider accepts writes. */
+  writable: boolean;
+}
+
+/** Read the plugin-owned thinking-level configuration of one model row. */
+export async function loadModelThinkingConfig(
+  api: IApiClient,
+  provider: string,
+  model: string,
+): Promise<ModelThinkingConfig> {
+  const settings = valueOf(await api.settings.describe({}));
+  const namespace = settings.namespaces.find((entry) => entry.ns === 'llm-pi-ai');
+  const location = namespace === undefined ? undefined : locatePiAiModel(namespace, provider, model);
+  if (location === undefined) return { available: false, levels: [], defaultLevel: null, writable: settings.writable };
+  const row = location.models[location.modelIndex];
+  const levels = Array.isArray(row.thinkingLevels)
+    ? row.thinkingLevels.filter((entry): entry is string => typeof entry === 'string')
+    : [];
+  const defaultLevel = typeof row.defaultThinkingLevel === 'string' ? row.defaultThinkingLevel : null;
+  return { available: true, levels, defaultLevel, writable: settings.writable };
+}
+
+/** Write the plugin-owned thinking-level configuration, preserving sibling rows. */
+export async function saveModelThinkingConfig(
+  api: IApiClient,
+  provider: string,
+  model: string,
+  levels: readonly string[],
+  defaultLevel: string | null,
+): Promise<ModelThinkingConfig> {
+  const settings = valueOf(await api.settings.describe({}));
+  const namespace = settings.namespaces.find((entry) => entry.ns === 'llm-pi-ai');
+  const location = namespace === undefined ? undefined : locatePiAiModel(namespace, provider, model);
+  if (location === undefined || !settings.writable) {
+    throw new AuxiliaryApiError(
+      'bad-request',
+      'dsh-auxiliary: the selected model does not expose an editable llm-pi-ai model row',
+    );
+  }
+  const models = location.models.map((entry, index) => index === location.modelIndex
+    ? { ...entry, thinkingLevels: [...levels], defaultThinkingLevel: defaultLevel }
+    : entry);
+  valueOf(await api.settings.update({
+    ns: 'llm-pi-ai',
+    patch: { providers: { [provider]: { models } } },
+    expectedRevision: location.namespace.revision,
+  }));
+  return { available: true, levels: [...levels], defaultLevel, writable: true };
+}
+
+/**
  * List every user-owned llm-pi-ai model marked for image generation
  * (`imageGeneration: true` in its raw row). The flag survives in the raw user
  * section but is stripped from resolved views, so this walks `namespace.user`

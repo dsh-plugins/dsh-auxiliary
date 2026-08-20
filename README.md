@@ -316,6 +316,15 @@ non-pi-ai adapter) rows show a notice that the marks are `llm-pi-ai`-only, and
 pi-ai catalog rows not yet saved into the user section say to save the model
 first.
 
+The same fold also exposes **thinking-level** configuration: a list of rows
+adds/removes levels (only `off`, `minimal`, `low`, `medium`, `high`, `xhigh`,
+`max`), a pencil button batch-edits text such as `[low, high, max]` and rejects
+the whole input when any entry is invalid, and the default-thinking dropdown
+offers only the levels present in the list. New models start with an empty list
+and no default. These fields are plugin-owned raw model-row fields
+(`thinkingLevels` / `defaultThinkingLevel`) and are also written only after the
+provider card Apply closes, so they never race the page's revision checks.
+
 ## Notes
 
 - Routing features reroute only their own call category (`purpose:
