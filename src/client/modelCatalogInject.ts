@@ -1181,6 +1181,9 @@ export function startModelCatalogInjection(
     // Rows saved since the last sweep get their pending marks written first.
     const applied = await applyPendingMarks(api, entries, pending).catch(() => false);
     if (disposed) return;
+    // Do not inject rows from an unloaded (empty) entry list: the fresh-block
+    // check would keep those placeholder blocks even after the data loads.
+    if (!entriesLoaded) return;
     sweep(api, t, entries, catalogKeys, directory, pending);
     // The writes may have changed the document; let the debounced re-read
     // refresh entries so the next sweep rebuilds those rows as saved.
@@ -1235,12 +1238,20 @@ export function startModelCatalogInjection(
     }, 150);
   };
 
+  // Until the settings document has been read at least once, `entries` is
+  // empty and a sweep would build injected blocks with no saved marks; the
+  // "fresh" check then keeps those empty blocks forever. Defer every sweep
+  // until the first successful refresh so saved thinking levels / capability
+  // marks are reflected when a reopened card injects its block.
+  let entriesLoaded = false;
+
   const refreshEntries = (): void => {
     void Promise.all([piAiModelState(api), providerDirectory(api)]).then(([state, providers]) => {
       if (disposed) return;
       entries = state.entries;
       catalogKeys = state.catalogKeys;
       directory = providers;
+      entriesLoaded = true;
       schedule();
     }).catch(() => { /* keep the last known rows */ });
   };
