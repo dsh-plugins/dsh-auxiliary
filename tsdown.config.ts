@@ -14,7 +14,8 @@ const PLATFORM_MODULES = [
   'react', 'react/jsx-runtime', 'react-dom', 'react-dom/client', '@deepseek-ai/cordis',
   '@deepseek-ai/dsh-client-ui-slots',
   '@deepseek-ai/dsh-client-web-react',
-  '@deepseek-ai/dsh-client-ui-primitives',
+  // ui-primitives 不再直接引用：Menu 改经 dsh-loader 的 DshMenu 包装层
+  // （loader 自己声明对该种子的依赖并单点导入）。
   '@deepseek-ai/dsh-client-schema-form',
 ] as const;
 

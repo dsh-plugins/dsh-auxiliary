@@ -7,9 +7,8 @@
  * @module dsh-auxiliary/client/ThinkingLevelSelect
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-// `Menu` 直接取自官方包（shell 通过模块表共享的公开 UI 原语，非私有内部面）；
-// 图标改用 dsh-loader 的策划集。理由详见 ModelPicker.tsx 顶部的说明。
-import { Menu } from '@deepseek-ai/dsh-client-ui-primitives';
+// `Menu` 取自 dsh-loader 的包装层 `DshMenu`（单点吸收平台变化）；理由见 ModelPicker.tsx 顶部。
+import { DshMenu as Menu } from '@dsh-plugin/dsh-loader/client';
 import { Icon } from '@dsh-plugin/dsh-loader/client';
 import { useMenuHeightLimit } from './useMenuHeightLimit.js';
 
