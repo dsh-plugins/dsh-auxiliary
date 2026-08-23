@@ -9,7 +9,7 @@
  * @module dsh-auxiliary
  */
 import type { Context } from '@deepseek-ai/cordis';
-import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings';
+import type { SettingsNamespace } from '@deepseek-ai/dsh-settings';
 import { Config, PLUGIN_ID, PLUGIN_NAME, resolvePluginConfig, type PluginConfig, type ResolvedPluginConfig } from './config.js';
 import { registerVisionTool } from './vision-tool.js';
 import { registerImageHandoff } from './image-handoff.js';
@@ -19,6 +19,25 @@ import { installTitleRouter, titleRoute } from './title-router.js';
 import { installCompactRouter } from './compact-router.js';
 import { CompressEngine, installCompressionEngine } from './compress-engine.js';
 import { registerImagegenTool } from './imagegen-tool.js';
+import { clearDshFacade, setDshFacade, type DshFacade } from './dsh.js';
+
+/**
+ * `ctx.dshLoader` 中本插件用到的部分。
+ *
+ * 在 {@link DshFacade}（模块级 dsh 符号）之外还要 `settings` 门面：
+ * `installSettingsSection` 承载真实上游语义，由 loader 转发而非本插件重实现。
+ */
+interface DshLoaderApi extends DshFacade {
+  settings: {
+    installSection<T>(
+      ctx: unknown,
+      ns: unknown,
+      schema: unknown,
+      entry: T,
+      hooks: { setSource(current: () => T): void; onChange(): void; validate(value: T): void },
+    ): boolean;
+  };
+}
 
 export { Config, PLUGIN_NAME, resolvePluginConfig } from './config.js';
 export { registerVisionTool } from './vision-tool.js';
@@ -34,15 +53,20 @@ export { registerImagegenTool } from './imagegen-tool.js';
 export const name = PLUGIN_NAME;
 
 /** Services required by `inspect_image`, compaction routing, and compression. */
-export const inject = ['llm', 'tools', 'systemPrompt', 'attachments', 'fs', 'settings', 'credentials'];
+export const inject = ['dshLoader', 'llm', 'tools', 'systemPrompt', 'attachments', 'fs', 'settings', 'credentials'];
 
 /**
  * User-settings namespace owning the whole plugin section. Deliberately the
- * short `PLUGIN_ID`, not the scoped `PLUGIN_NAME`: `settingsNamespace` only
+ * short `PLUGIN_ID`, not the scoped `PLUGIN_NAME`: the namespace pattern only
  * accepts `[a-z0-9-]`, and keeping the old value preserves already-saved user
  * settings across the package rename.
+ *
+ * A bare literal rather than `settingsNamespace(PLUGIN_ID)` because this is
+ * evaluated at MODULE scope, before `apply` has injected the loader facade.
+ * dsh's `settingsNamespace` is pure validation returning its argument unchanged
+ * (it only brands the string at the type level), so this is equivalent.
  */
-const NS = settingsNamespace(PLUGIN_ID);
+const NS = PLUGIN_ID as unknown as SettingsNamespace;
 
 /**
  * Dormant directory entry that exposes this plugin's settings namespace to the
@@ -54,6 +78,13 @@ const SETTINGS_DIRECTORY_PROVIDER = 'dsh-auxiliary-settings';
 
 /** Cordis plugin entry. */
 export function apply(ctx: Context, config: PluginConfig): void {
+  // 先接住 loader 门面：其余模块经 ./dsh.js 取用 dsh 的模块级符号
+  // （defineTool / deadline / credentialRef / BasicCompactionEngine ...），
+  // 因此这一步必须早于任何注册。
+  const loader = (ctx as Context & { dshLoader: DshLoaderApi }).dshLoader;
+  setDshFacade(loader);
+  ctx.effect(() => () => clearDshFacade());
+
   let current = () => config;
   let lastRaw: PluginConfig | undefined;
   let lastGood: ResolvedPluginConfig | undefined;
@@ -193,7 +224,10 @@ export function apply(ctx: Context, config: PluginConfig): void {
     compressionEngine = undefined;
   }, 'dsh-auxiliary: vision tool, handoff, and approval-router lifecycle');
 
-  installSettingsSection(ctx, NS, Config, config, {
+  // 经 loader 门面转发到 dsh 的 installSettingsSection（不重实现其回退语义：
+  // 以组合入口作 base 层注册、settings 服务在时把 source thunk 指向解析作用域、
+  // 服务消失时回退到入口，全程挂在 scoped fiber 上）。
+  loader.settings.installSection<PluginConfig>(ctx, NS, Config, config, {
     setSource: (source) => {
       current = source;
     },

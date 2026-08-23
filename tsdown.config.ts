@@ -19,7 +19,15 @@ const PLATFORM_MODULES = [
 ] as const;
 
 /** Externals resolved from the loader module table (platform seeds + the documented runtime exemption). */
-const CLIENT_EXTERNALS: readonly string[] = [...PLATFORM_MODULES, '@deepseek-ai/dsh-client-runtime/client'];
+const CLIENT_EXTERNALS: readonly string[] = [
+  ...PLATFORM_MODULES,
+  '@deepseek-ai/dsh-client-runtime/client',
+  // dsh-loader 的 UI 套件（基础控件 + 策划图标）。必须是 external：它的产物是被
+  // `window.__ModuleLoader__.load({ factory })` 包裹的 CJS 闭包，静态分析看不到任何
+  // export，一旦被当成可内联依赖，rolldown 会报 MISSING_EXPORT。运行时由 DSH 客户端
+  // 模块表解析（剥掉 /client 后缀 → 命中 dsh-loader 已注册的工厂 → 递归物化）。
+  '@dsh-plugin/dsh-loader/client',
+];
 
 export default defineConfig({
   name: '@dsh-plugin/dsh-auxiliary/client',

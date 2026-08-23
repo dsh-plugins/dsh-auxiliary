@@ -7,7 +7,10 @@
  * @module dsh-auxiliary/client/ThinkingLevelSelect
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { IconChevronDownOutline14, Menu } from '@deepseek-ai/dsh-client-ui-primitives';
+// `Menu` 直接取自官方包（shell 通过模块表共享的公开 UI 原语，非私有内部面）；
+// 图标改用 dsh-loader 的策划集。理由详见 ModelPicker.tsx 顶部的说明。
+import { Menu } from '@deepseek-ai/dsh-client-ui-primitives';
+import { Icon } from '@dsh-plugin/dsh-loader/client';
 import { useMenuHeightLimit } from './useMenuHeightLimit.js';
 
 /** Max menu height kept in sync with useMenuHeightLimit. */
@@ -113,7 +116,7 @@ export function ThinkingLevelSelect({
         >
           <span style={triggerTextStyle}>{value ?? emptyLabel}</span>
           <span style={{ alignItems: 'center', color: 'var(--dsw-alias-label-tertiary)', display: 'inline-flex', flexShrink: 0 }}>
-            <IconChevronDownOutline14 size={14} />
+            <Icon name="ChevronDown" size={14} />
           </span>
         </button>
       )}

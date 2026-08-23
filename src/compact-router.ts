@@ -12,7 +12,8 @@
  * @module dsh-auxiliary/compact-router
  */
 import type { Context } from '@deepseek-ai/cordis';
-import { deepFreeze, type GenerateOptions, type StreamChunk } from '@deepseek-ai/dsh-llm';
+import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm';
+import { deepFreeze } from './dsh.js';
 import type { ResolvedPluginConfig } from './config.js';
 
 /** The configured auxiliary summarizer route, or undefined when routing is off. */

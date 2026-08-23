@@ -32,7 +32,8 @@
  * @module dsh-auxiliary/approve-router
  */
 import type { Context } from '@deepseek-ai/cordis';
-import { deepFreeze, type GenerateOptions } from '@deepseek-ai/dsh-llm';
+import type { GenerateOptions } from '@deepseek-ai/dsh-llm';
+import { deepFreeze } from './dsh.js';
 import type { ResolvedPluginConfig } from './config.js';
 
 /** The approve-for-me review prompt's fixed action marker. */

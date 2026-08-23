@@ -36,7 +36,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis';
 import type { Agent } from '@deepseek-ai/dsh-agent';
-import { delegationDepthOf } from '@deepseek-ai/dsh-subagent';
+import { dsh } from './dsh.js';
 import type { ResolvedPluginConfig } from './config.js';
 
 /**
@@ -50,7 +50,7 @@ import type { ResolvedPluginConfig } from './config.js';
 export function registerSubagentRouter(ctx: Context, get: () => ResolvedPluginConfig): () => void {
   const installFor = (agent: Agent): void => {
     // Depth zero is a top-level agent; only delegated children are routed.
-    if (delegationDepthOf(agent) <= 0) return;
+    if (dsh().subagent.delegationDepthOf(agent) <= 0) return;
     const subagent = get().subagent;
     if (!subagent.enabled || subagent.provider === undefined || subagent.model === undefined) return;
     const { provider, model } = subagent;

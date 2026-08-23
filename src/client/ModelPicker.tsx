@@ -17,11 +17,18 @@ import {
   type CSSProperties,
   type ReactNode,
 } from 'react';
-import {
-  IconChevronDownOutline14,
-  Menu,
-  type MenuEntry,
-} from '@deepseek-ai/dsh-client-ui-primitives';
+// `Menu` / `MenuEntry` 直接取自官方包，这是刻意的：
+//
+// 它不是 dsh 的**私有内部面**，而是 shell 主动共享进浏览器模块表的公开 UI 原语，
+// 运行时由模块表解析，稳定可靠。而 dsh-loader 的 `/ui-primitives` 子路径是
+// `export * from '@deepseek-ai/dsh-client-ui-primitives'`——这行 re-export 从
+// **dsh-loader 自己的位置**解析该包，发布出去的 dsh-loader 不带 devDependencies，
+// 于是消费者侧类型必然解析失败。绕一层子路径既无收益又会坏掉类型，故不绕。
+//
+// 图标则相反：改用 dsh-loader 的策划集有真实收益（消除手写 SVG、统一设计语言、
+// currentColor 跟随主题），且不依赖具体的官方图标导出名。
+import { Menu, type MenuEntry } from '@deepseek-ai/dsh-client-ui-primitives';
+import { Icon } from '@dsh-plugin/dsh-loader/client';
 import type { AuxRoute, ModelProviderGroup } from './api.js';
 import { useMenuHeightLimit } from './useMenuHeightLimit.js';
 
@@ -212,7 +219,7 @@ export function ModelPicker({
           >
             <span style={triggerTextStyle}>{triggerText}</span>
             <span style={triggerHintStyle} aria-hidden="true">
-              <IconChevronDownOutline14 size={14} />
+              <Icon name="ChevronDown" size={14} />
             </span>
           </button>
         )}

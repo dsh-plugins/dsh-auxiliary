@@ -16,17 +16,27 @@
  * @module dsh-auxiliary/imagegen-tool
  */
 import type { Context } from '@deepseek-ai/cordis';
-import { defineTool } from '@deepseek-ai/dsh-tools';
-import { createUserMessage } from '@deepseek-ai/dsh-llm';
-import { settingsNamespace } from '@deepseek-ai/dsh-settings';
-import { credentialRef } from '@deepseek-ai/dsh-credentials';
+// Type-only side-effect imports: pull the `ctx.tools` / `ctx.credentials`
+// Context augmentations; erased at compile time.
+import type {} from '@deepseek-ai/dsh-tools';
+import type {} from '@deepseek-ai/dsh-credentials';
+import type { SettingsNamespace } from '@deepseek-ai/dsh-settings';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment';
+import { dsh, llm } from './dsh.js';
 import { PLUGIN_ID, PLUGIN_NAME, type ResolvedPluginConfig } from './config.js';
 
-/** The llm-pi-ai settings namespace that owns the provider routes. */
-const LLM_PI_AI_NS = settingsNamespace('llm-pi-ai');
+/**
+ * The llm-pi-ai settings namespace that owns the provider routes.
+ *
+ * A bare string rather than `settingsNamespace('llm-pi-ai')`: this is evaluated
+ * at MODULE scope, before `apply` has injected the loader facade. dsh's
+ * `settingsNamespace` is pure validation that returns its argument unchanged
+ * (it only brands the string at the type level), so the literal plus the brand
+ * cast is exactly equivalent.
+ */
+const LLM_PI_AI_NS = 'llm-pi-ai' as unknown as SettingsNamespace;
 
 /** Default generated-image side; the OpenAI images API accepts this. */
 const DEFAULT_SIZE = '1024x1024';
@@ -84,7 +94,7 @@ export function registerImagegenTool(ctx: Context, get: () => ResolvedPluginConf
     order: 165,
     text: 'Use the generate_image tool to create images with the configured auxiliary image-generation model when the user asks to generate, draw, or create a picture. Pass a detailed "prompt" describing the desired image. To edit or re-style an existing image (img2img), pass its path as "reference". The tool saves the generated images under the current working directory (generated/) and displays them inline in the conversation; you can also inspect them with inspect_image to describe or verify them.'
   });
-  const disposeTool = ctx.tools.register(defineTool({
+  const disposeTool = ctx.tools.register(dsh().tools.defineTool({
     name: 'generate_image',
     description: 'Generate images with the configured auxiliary image-generation model (OpenAI-compatible images API). Pass a detailed prompt; images are displayed inline and saved under the working directory.',
     parameters: {
@@ -156,7 +166,7 @@ export function registerImagegenTool(ctx: Context, get: () => ResolvedPluginConf
       let apiKey: string | undefined;
       const ref = provider?.apiKeyEnv;
       if (ref !== undefined && ref.length > 0) {
-        const resolved = await ctx.credentials.resolve(credentialRef(ref));
+        const resolved = await ctx.credentials.resolve(dsh().credentials.credentialRef(ref));
         apiKey = resolved?.value;
       }
       if (baseURL === undefined || baseURL.length === 0 || apiKey === undefined) {
@@ -259,7 +269,7 @@ export function registerImagegenTool(ctx: Context, get: () => ResolvedPluginConf
       // render inline in the chat, exactly like the core read_image tool does.
       // The tool output itself carries the image blocks too, but only a
       // deferred context message enters durable session history.
-      if (exec.parent !== void 0) exec.deferContext(createUserMessage({
+      if (exec.parent !== void 0) exec.deferContext(llm().createUserMessage({
         content: [
           { type: 'text', text: `Generated ${paths.length} image(s):\n${paths.map((path) => `- ${path}`).join('\n')}` },
           ...images.map((ref) => ({ type: 'image' as const, attachment: ref as unknown as ImageAttachmentRef })),

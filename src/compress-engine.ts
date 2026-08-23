@@ -12,14 +12,11 @@
  * @module dsh-auxiliary/compress-engine
  */
 import type { Context } from '@deepseek-ai/cordis';
-import {
-  BasicCompactionEngine,
-  type BasicCompactionConfig,
-  type ResolvedConfig,
-} from '@deepseek-ai/dsh-compaction-basic';
+import type { BasicCompactionConfig, ResolvedConfig } from '@deepseek-ai/dsh-compaction-basic';
 import type { CompactionResult, CompactionTrigger } from '@deepseek-ai/dsh-compaction';
 import type { Agent } from '@deepseek-ai/dsh-agent';
-import { BlockAssembler, createUserMessage, type ContentBlock, type Message, type TokenUsage, type ToolSchema } from '@deepseek-ai/dsh-llm';
+import type { ContentBlock, Message, TokenUsage, ToolSchema } from '@deepseek-ai/dsh-llm';
+import { dsh, llm } from './dsh.js';
 import { PLUGIN_NAME } from './config.js';
 import { compactRoute } from './compact-router.js';
 import type { ResolvedEngineConfig, ResolvedPluginConfig } from './config.js';
@@ -63,98 +60,135 @@ function finishError(finish: { kind: string; failure?: { message: string; code: 
   }
 }
 
-/** The auxiliary compression engine described at the module head. */
-export class CompressEngine extends BasicCompactionEngine {
-  private readonly compressPrompt: string;
-  private readonly auxRoute: () => { provider: string; model: string } | undefined;
-  private readonly getEngineConfig: () => ResolvedEngineConfig;
+/**
+ * The auxiliary compression engine's instance surface.
+ *
+ * Exported as an INTERFACE rather than a class type because the class itself is
+ * built lazily (see {@link compressEngineClass}): its base class is a
+ * module-level export of `@deepseek-ai/dsh-compaction-basic` that dshloader only
+ * resolves at boot, so `class X extends Base` cannot be evaluated at module
+ * scope. `index.ts` only holds the instance, so an opaque handle is enough.
+ */
+export interface CompressEngine {
+  compactIfNeeded(agent: Agent, trigger: CompactionTrigger, signal: AbortSignal): Promise<CompactionResult | null>;
+}
 
-  constructor(
-    ctx: Context,
-    config: BasicCompactionConfig | undefined,
-    compressPrompt: string,
-    auxRoute: () => { provider: string; model: string } | undefined,
-    getEngineConfig: () => ResolvedEngineConfig
-  ) {
-    super(ctx, config);
-    this.compressPrompt = compressPrompt;
-    this.auxRoute = auxRoute;
-    this.getEngineConfig = getEngineConfig;
-  }
+/** Cached lazily-built class, so repeated installs reuse one constructor. */
+let CompressEngineClass: (new (
+  ctx: Context,
+  config: BasicCompactionConfig | undefined,
+  compressPrompt: string,
+  auxRoute: () => { provider: string; model: string } | undefined,
+  getEngineConfig: () => ResolvedEngineConfig,
+) => CompressEngine) | undefined;
 
-  /**
-   * Refresh the pressure policy right before a check so settings-page edits to
-   * the compaction threshold apply without restarting or rebuilding listeners.
-   */
-  private syncEngineConfig(): void {
-    const engine = this.getEngineConfig();
-    const next: ResolvedConfig = {
-      thresholdRatio: engine.thresholdRatio,
-      retainRatio: engine.retainRatio,
-      maxTokens: engine.maxTokens,
-      compactionRetries: engine.compactionRetries,
-      maxOverflowRetries: engine.maxOverflowRetries,
-      summarizationProvider: '',
-      summarizationModel: '',
-      modelPolicies: [],
-      auto: true,
-    };
-    (this as unknown as { config: ResolvedConfig }).config = next;
-  }
+/**
+ * Build (once) the `CompressEngine` class on top of dsh's
+ * `BasicCompactionEngine`.
+ *
+ * The base class arrives through `dshLoader.dsh.compaction`, which is only
+ * populated after `apply` — hence the deferral. Everything else about the class
+ * is unchanged from the eager version.
+ */
+function compressEngineClass(): NonNullable<typeof CompressEngineClass> {
+  if (CompressEngineClass !== undefined) return CompressEngineClass;
+  const Base = dsh().compaction.BasicCompactionEngine;
 
-  override compactIfNeeded(
-    agent: Agent,
-    trigger: CompactionTrigger,
-    signal: AbortSignal,
-  ): Promise<CompactionResult | null> {
-    this.syncEngineConfig();
-    return super.compactIfNeeded(agent, trigger, signal);
-  }
+  class CompressEngineImpl extends Base {
+    private readonly compressPrompt: string;
+    private readonly auxRoute: () => { provider: string; model: string } | undefined;
+    private readonly getEngineConfig: () => ResolvedEngineConfig;
 
-  protected override async summarize(input: CompressInput, agent: Agent, signal?: AbortSignal): Promise<CompressResult> {
-    const route = this.auxRoute();
-    if (route === undefined) {
-      // No auxiliary route: keep the stock behavior untouched.
-      return super.summarize(input, agent, signal);
+    constructor(
+      ctx: Context,
+      config: BasicCompactionConfig | undefined,
+      compressPrompt: string,
+      auxRoute: () => { provider: string; model: string } | undefined,
+      getEngineConfig: () => ResolvedEngineConfig
+    ) {
+      super(ctx, config);
+      this.compressPrompt = compressPrompt;
+      this.auxRoute = auxRoute;
+      this.getEngineConfig = getEngineConfig;
     }
-    const messages = [
-      ...input.messages,
-      createUserMessage({
-        content: [{ type: 'text', text: this.compressPrompt }],
-        source: { kind: 'plugin', plugin: PLUGIN_NAME }
-      })
-    ];
-    const assembler = new BlockAssembler();
-    for await (const chunk of this.ctx.llm.stream({
-      provider: route.provider,
-      model: route.model,
-      messages,
-      ...(input.system !== undefined ? { system: input.system } : {}),
-      ...(input.tools !== undefined ? { tools: [...input.tools] } : {}),
-      maxTokens: this.config.maxTokens,
-      sessionId: agent.session.id,
-      purpose: 'compaction',
-      ...(signal !== undefined ? { signal } : {})
-    })) {
-      assembler.push(chunk);
+
+    /**
+     * Refresh the pressure policy right before a check so settings-page edits to
+     * the compaction threshold apply without restarting or rebuilding listeners.
+     */
+    private syncEngineConfig(): void {
+      const engine = this.getEngineConfig();
+      const next: ResolvedConfig = {
+        thresholdRatio: engine.thresholdRatio,
+        retainRatio: engine.retainRatio,
+        maxTokens: engine.maxTokens,
+        compactionRetries: engine.compactionRetries,
+        maxOverflowRetries: engine.maxOverflowRetries,
+        summarizationProvider: '',
+        summarizationModel: '',
+        modelPolicies: [],
+        auto: true,
+      };
+      (this as unknown as { config: ResolvedConfig }).config = next;
     }
-    const terminalError = finishError(assembler.finish);
-    if (terminalError !== undefined) throw terminalError;
-    const rawOutput = assembler.blocks();
-    const summary = rawOutput.filter((block): block is Extract<ContentBlock, { type: 'text' }> => block.type === 'text');
-    if (!summary.some((block) => block.text.trim().length > 0)) {
-      throw new Error('dsh-auxiliary: compression produced no text summary content');
+
+    compactIfNeeded(
+      agent: Agent,
+      trigger: CompactionTrigger,
+      signal: AbortSignal,
+    ): Promise<CompactionResult | null> {
+      this.syncEngineConfig();
+      return super.compactIfNeeded(agent, trigger, signal);
     }
-    return {
-      summary,
-      rawOutput,
-      llmStreamCall: true,
-      provider: route.provider,
-      model: route.model,
-      maxTokens: this.config.maxTokens,
-      ...(assembler.usage !== undefined ? { usage: assembler.usage } : {})
-    };
+
+    protected async summarize(input: CompressInput, agent: Agent, signal?: AbortSignal): Promise<CompressResult> {
+      const route = this.auxRoute();
+      if (route === undefined) {
+        // No auxiliary route: keep the stock behavior untouched.
+        return super.summarize(input, agent, signal);
+      }
+      const messages = [
+        ...input.messages,
+        llm().createUserMessage({
+          content: [{ type: 'text', text: this.compressPrompt }],
+          source: { kind: 'plugin', plugin: PLUGIN_NAME }
+        })
+      ];
+      const assembler = new (dsh().llm.BlockAssembler)();
+      for await (const chunk of this.ctx.llm.stream({
+        provider: route.provider,
+        model: route.model,
+        messages,
+        ...(input.system !== undefined ? { system: input.system } : {}),
+        ...(input.tools !== undefined ? { tools: [...input.tools] } : {}),
+        maxTokens: this.config.maxTokens,
+        sessionId: agent.session.id,
+        purpose: 'compaction',
+        ...(signal !== undefined ? { signal } : {})
+      })) {
+        assembler.push(chunk);
+      }
+      const terminalError = finishError(assembler.finish);
+      if (terminalError !== undefined) throw terminalError;
+      const rawOutput = assembler.blocks();
+      const summary = rawOutput.filter((block: ContentBlock): block is Extract<ContentBlock, { type: 'text' }> => block.type === 'text');
+      if (!summary.some((block: Extract<ContentBlock, { type: 'text' }>) => block.text.trim().length > 0)) {
+        throw new Error('dsh-auxiliary: compression produced no text summary content');
+      }
+      return {
+        summary,
+        rawOutput,
+        llmStreamCall: true,
+        provider: route.provider,
+        model: route.model,
+        maxTokens: this.config.maxTokens,
+        ...(assembler.usage !== undefined ? { usage: assembler.usage } : {})
+      };
+    }
   }
+
+  CompressEngineClass = CompressEngineImpl as unknown as NonNullable<typeof CompressEngineClass>;
+  return CompressEngineClass;
 }
 
 /** Install the engine unless `ctx.compaction` is already provided (the stock */
@@ -164,7 +198,7 @@ export function installCompressionEngine(ctx: Context, get: () => ResolvedPlugin
     return undefined;
   }
   const engine = get().engine;
-  return new CompressEngine(
+  return new (compressEngineClass())(
     ctx,
     {
       thresholdRatio: engine.thresholdRatio,

@@ -6,9 +6,8 @@
  *
  * @module dsh-auxiliary/config
  */
-import z from '@deepseek-ai/schemastery';
-import { deepFreeze } from '@deepseek-ai/dsh-llm';
-import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout';
+import z from 'schemastery';
+import { MAX_TIMER_DELAY_MS, deepFreeze } from './dsh.js';
 
 /**
  * Stable plugin id recorded with plugin-sourced messages and tool guidance.

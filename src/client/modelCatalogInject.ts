@@ -44,11 +44,9 @@
  */
 import type { IApiClient } from '@deepseek-ai/dsh-client-connection/client';
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots';
-import {
-  IconEditOutline16,
-  IconPlusOutline16,
-  IconTrashOutline16,
-} from '@deepseek-ai/dsh-client-ui-primitives';
+// 图标改用 dsh-loader 的策划集：意图命名（Edit / Add / Delete），fill 为
+// currentColor 因而自动跟随 shell 主题，且不再依赖具体的官方图标导出名。
+import { Icon } from '@dsh-plugin/dsh-loader/client';
 import * as React from 'react';
 import { createRoot } from 'react-dom/client';
 import { ThinkingLevelSelect } from './ThinkingLevelSelect.js';
@@ -574,7 +572,7 @@ function buildThinkingSection(
       const removeIconHost = createIconHost();
       removeIconHost.style.display = 'inline-flex';
       remove.append(removeIconHost);
-      mountIcon(removeIconHost, React.createElement(IconTrashOutline16, { size: 14 }));
+      mountIcon(removeIconHost, React.createElement(Icon, { name: 'Delete', size: 14 }));
       remove.addEventListener('click', () => {
         state.levels.splice(index, 1);
         renderList();
@@ -599,7 +597,7 @@ function buildThinkingSection(
   addButton.style.gap = '4px';
   const plusHost = createIconHost();
   plusHost.style.display = 'inline-flex';
-  mountIcon(plusHost, React.createElement(IconPlusOutline16, { size: 14 }));
+  mountIcon(plusHost, React.createElement(Icon, { name: 'Add', size: 14 }));
   const addLabel = document.createElement('span');
   addLabel.textContent = t('thinkingLevelsAdd');
   addButton.append(plusHost, addLabel);
@@ -619,7 +617,7 @@ function buildThinkingSection(
   const pencilHost = createIconHost();
   pencilHost.style.display = 'inline-flex';
   pencil.append(pencilHost);
-  mountIcon(pencilHost, React.createElement(IconEditOutline16, { size: 14 }));
+  mountIcon(pencilHost, React.createElement(Icon, { name: 'Edit', size: 14 }));
   pencil.addEventListener('click', () => {
     const existing = uniqueThinkingLevels(state.levels.filter((level) => level.length > 0));
     const initial = existing.length > 0 ? `[${existing.join(', ')}]` : '';
@@ -1167,6 +1165,18 @@ async function providerDirectory(api: IApiClient): Promise<ProviderDirectory> {
 export function startModelCatalogInjection(
   api: IApiClient,
   t: TranslateNS<'dsh-auxiliary'>,
+  /**
+   * dsh-loader 的 DOM-settled 订阅原语。
+   *
+   * 本注入点的**宿主识别本身就是业务逻辑**（按 aria-label 跨卡片关联 provider
+   * directory、去抖重读 settings、还要监听受控输入的 input 事件），因此不适合
+   * 表达成 `ui.mount` 的锚点——硬套只会把两百行识别逻辑塞进 AnchorSpec.find()。
+   * 但「整文档 MutationObserver + rAF 合流」这一段是与其他插件重复的样板，交给
+   * 引擎即可：`onDomSettled` 复用同一个 observer 与同一帧，本插件只保留 sweep。
+   *
+   * 省略时退回自建 observer（loader 缺席的降级路径）。
+   */
+  onDomSettled?: (listener: () => void) => () => void,
 ): () => void {
   let entries: Array<PiAiModelRow> = [];
   let catalogKeys: Set<string> = new Set();
@@ -1257,8 +1267,16 @@ export function startModelCatalogInjection(
   };
 
   refreshEntries();
-  const observer = new MutationObserver(schedule);
-  observer.observe(document.body, { childList: true, subtree: true });
+  // DOM 变动的观察与合流交给 dsh-loader 的引擎（与其余插件共用同一个
+  // MutationObserver）；缺席时才自建一个。
+  let stopObserving: () => void;
+  if (onDomSettled !== undefined) {
+    stopObserving = onDomSettled(schedule);
+  } else {
+    const observer = new MutationObserver(schedule);
+    observer.observe(document.body, { childList: true, subtree: true });
+    stopObserving = () => observer.disconnect();
+  }
   // The custom-provider create card keeps its route in a controlled input;
   // typing there does not change child nodes, so listen for the identity
   // fields explicitly and let the debounced refresh catch up.
@@ -1278,7 +1296,7 @@ export function startModelCatalogInjection(
   return () => {
     disposed = true;
     if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
-    observer.disconnect();
+    stopObserving();
     document.removeEventListener('input', onIdentityInput, true);
   };
 }

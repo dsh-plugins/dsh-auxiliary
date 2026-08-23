@@ -8,12 +8,27 @@
  * @module dsh-auxiliary/vision-tool
  */
 import type { Context } from '@deepseek-ai/cordis';
-import { BlockAssembler, createUserMessage, deepFreeze, type ContentBlock, type GenerateOptions } from '@deepseek-ai/dsh-llm';
-import { ToolArgsError, defineTool } from '@deepseek-ai/dsh-tools';
-import '@deepseek-ai/dsh-fs';
+import type { BlockAssembler, ContentBlock, GenerateOptions } from '@deepseek-ai/dsh-llm';
+// Type-only side-effect imports: these pull the `declare module 'cordis'`
+// Context augmentations (`ctx.fs`, `ctx.tools`) the plugin relies on. They are
+// erased at compile time, so they never reach the runtime import graph.
+import type {} from '@deepseek-ai/dsh-fs';
+import type {} from '@deepseek-ai/dsh-tools';
 import type { ImageMediaType, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment';
-import { deadline } from '@deepseek-ai/dsh-timeout';
+import { deepFreeze, dsh, llm } from './dsh.js';
 import { PLUGIN_NAME, type ResolvedPluginConfig } from './config.js';
+
+/**
+ * `ToolArgsError` 的构造入口。
+ *
+ * 类本身由 dshloader 的 `dsh` 门面在启动期解析（它是 `@deepseek-ai/dsh-tools`
+ * 的模块级导出，不是服务方法），因此不能在模块求值期拿到；本 helper 把「取类 +
+ * new」收在一处，调用点保持原样可读。
+ */
+function argsError(messages: string[]): Error {
+  const ToolArgsError = dsh().tools.ToolArgsError;
+  return new ToolArgsError(messages);
+}
 
 /** Timeout code stamped on vision-tool aborts. */
 const VISION_TOOL_TIMEOUT_CODE = 'AUX_VISION_TOOL_TIMEOUT';
@@ -40,10 +55,10 @@ interface InspectImageArgs {
 function parseArgs(args: unknown): InspectImageArgs {
   const value = args as { path?: unknown; question?: unknown } | null;
   if (value === null || typeof value !== 'object' || typeof value.path !== 'string' || value.path.length === 0) {
-    throw new ToolArgsError(['inspect_image: "path" must be a non-empty string']);
+    throw argsError(['inspect_image: "path" must be a non-empty string']);
   }
   if (value.question !== undefined && typeof value.question !== 'string') {
-    throw new ToolArgsError(['inspect_image: "question" must be a string when present']);
+    throw argsError(['inspect_image: "question" must be a string when present']);
   }
   return { path: value.path, question: value.question };
 }
@@ -54,7 +69,7 @@ function parseImageRef(raw: string): ImageAttachmentRef {
   try {
     value = JSON.parse(raw);
   } catch {
-    throw new ToolArgsError(['describe_image: "ref" must be the exact JSON from the [image: ...] reference in the conversation']);
+    throw argsError(['describe_image: "ref" must be the exact JSON from the [image: ...] reference in the conversation']);
   }
   const ref = value as { attachmentId?: unknown; mediaType?: unknown; bytes?: unknown; width?: unknown; height?: unknown; name?: unknown } | null;
   if (
@@ -65,7 +80,7 @@ function parseImageRef(raw: string): ImageAttachmentRef {
     || typeof ref.width !== 'number' || !Number.isInteger(ref.width) || ref.width <= 0
     || typeof ref.height !== 'number' || !Number.isInteger(ref.height) || ref.height <= 0
   ) {
-    throw new ToolArgsError(['describe_image: "ref" must be a complete image reference (attachmentId, mediaType, bytes, width, height)']);
+    throw argsError(['describe_image: "ref" must be a complete image reference (attachmentId, mediaType, bytes, width, height)']);
   }
   return {
     attachmentId: ref.attachmentId as ImageAttachmentRef['attachmentId'],
@@ -121,7 +136,7 @@ async function askVision(
     throw new Error(`${toolName}: no vision provider/model is selected; select both in dsh-auxiliary settings before using this tool`);
   }
   const messages = [
-    createUserMessage({
+    llm().createUserMessage({
       content: [
         { type: 'image', attachment },
         { type: 'text', text: question }
@@ -129,13 +144,13 @@ async function askVision(
       source: { kind: 'plugin', plugin: PLUGIN_NAME }
     })
   ];
-  const timeout = deadline(signal, get().tool.timeoutMs, VISION_TOOL_TIMEOUT_CODE);
+  const timeout = dsh().timeout.deadline(signal, get().tool.timeoutMs, VISION_TOOL_TIMEOUT_CODE);
   try {
     const modelInfo = await ctx.llm.resolveModelInfo(vision.provider, vision.model, timeout.signal);
     if (modelInfo.inputModalities !== undefined && !modelInfo.inputModalities.includes('image')) {
       throw new Error(`${toolName}: selected model "${vision.provider}/${vision.model}" does not support image input`);
     }
-    const assembler = new BlockAssembler();
+    const assembler = new (dsh().llm.BlockAssembler)();
     for await (const chunk of ctx.llm.stream(deepFreeze({
       provider: vision.provider,
       model: vision.model,
@@ -175,7 +190,7 @@ export function registerVisionTool(ctx: Context, get: () => ResolvedPluginConfig
     order: 160,
     text: 'Use the inspect_image tool to analyze local image files (screenshots, photos, diagrams) with the selected vision model. Pass the file path and an optional question; the answer comes back as text. When the conversation contains an image reference like [image: {...}], the image was attached to the chat: call describe_image with the exact JSON from that reference to get the image content as text.'
   });
-  const disposeTool = ctx.tools.register(defineTool({
+  const disposeTool = ctx.tools.register(dsh().tools.defineTool({
     name: 'inspect_image',
     description: 'Analyze a local image file with the selected vision model. Pass an absolute or workspace-relative path to a PNG/JPEG/WebP/GIF file and an optional question; returns the vision model\'s answer as text.',
     parameters: {
@@ -228,7 +243,7 @@ export function registerVisionTool(ctx: Context, get: () => ResolvedPluginConfig
       return { content: answer.text, path: input.path, ...(answer.truncated ? { truncated: true } : {}) };
     }
   }));
-  const disposeDescribe = ctx.tools.register(defineTool({
+  const disposeDescribe = ctx.tools.register(dsh().tools.defineTool({
     name: 'describe_image',
     description: 'Get the content of an image attached to this chat as a text reference. The conversation contains a reference like [image: {...}]; pass the exact JSON inside it, and optionally a question or instruction to steer what the vision model should look for. Returns the selected vision model\'s answer as text, which becomes part of the conversation.',
     parameters: {
@@ -259,10 +274,10 @@ export function registerVisionTool(ctx: Context, get: () => ResolvedPluginConfig
     async execute(args, exec) {
       const value = args as { ref?: unknown; question?: unknown } | null;
       if (value === null || typeof value !== 'object' || typeof value.ref !== 'string') {
-        throw new ToolArgsError(['describe_image: "ref" must be the exact JSON from the [image: ...] reference in the conversation']);
+        throw argsError(['describe_image: "ref" must be the exact JSON from the [image: ...] reference in the conversation']);
       }
       if (value.question !== undefined && typeof value.question !== 'string') {
-        throw new ToolArgsError(['describe_image: "question" must be a string when present']);
+        throw argsError(['describe_image: "question" must be a string when present']);
       }
       const ref = parseImageRef(value.ref);
       const stored = await ctx.attachments.readImage(ref, exec.signal);

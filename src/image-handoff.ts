@@ -25,7 +25,8 @@
  * @module dsh-auxiliary/image-handoff
  */
 import type { Context } from '@deepseek-ai/cordis';
-import { deepFreeze, type ContentBlock, type GenerateOptions, type StreamChunk } from '@deepseek-ai/dsh-llm';
+import type { ContentBlock, GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm';
+import { deepFreeze } from './dsh.js';
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment';
 import type { ResolvedPluginConfig } from './config.js';
 

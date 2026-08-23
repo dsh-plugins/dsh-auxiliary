@@ -31,8 +31,14 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
 }
 
-/** Required services (fiber inject waiting — the runtime must be up first). */
-export const inject = ['slots', 'locale', 'connection'];
+/**
+ * Required services (fiber inject waiting — the runtime must be up first).
+ *
+ * `dshLoaderUi` 由 @dsh-plugin/dsh-loader 的浏览器半区 `ctx.provide` 提供。声明它
+ * 让 cordis 保证 loader 先激活：`dsh.client.immediately` 只保证工厂已注册，不保证
+ * 其 `apply` 已跑完，所以直接读 `window.__dshLoader__.ui` 可能拿到 undefined。
+ */
+export const inject = ['slots', 'locale', 'connection', 'dshLoaderUi'];
 
 /** Type-only surface (export discipline: no value exports beyond the plugin contract). */
 export type { AuxiliarySectionProps } from './AuxiliarySection.js';
@@ -52,8 +58,15 @@ export function apply(ctx: ClientContext): void {
     t,
   });
 
+  // loader 的 UI 门面（只取本插件需要的一个原语）。
+  const loaderUi = (ctx as unknown as {
+    dshLoaderUi?: { onDomSettled(listener: () => void): () => void };
+  }).dshLoaderUi;
+
   ctx.effect(
-    () => startModelCatalogInjection(connection.api, t),
+    // 把 loader 的 DOM-settled 原语交给注入器：它据此复用引擎那一个
+    // MutationObserver + rAF 合流，不再自建（loader 缺席时自动降级）。
+    () => startModelCatalogInjection(connection.api, t, loaderUi?.onDomSettled),
     'dsh-auxiliary: model catalog capability injection',
   );
 
