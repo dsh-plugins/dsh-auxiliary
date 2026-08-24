@@ -338,22 +338,93 @@ export async function saveModelGenerationCapability(
 }
 
 /**
+ * Every pi-ai thinking level a profile may declare, in escalation order.
+ * Mirrors `THINKING_LEVELS` in `@deepseek-ai/dsh-llm-pi-ai`.
+ */
+const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
+
+/** A model's official reasoning-efforts declaration. */
+type ReasoningEfforts =
+  | false
+  | Readonly<Record<string, string | null>>;
+
+/** Whether a level name is a pi-ai thinking level. */
+function isThinkingLevel(value: string): boolean {
+  return (THINKING_LEVELS as readonly string[]).includes(value);
+}
+
+/**
+ * Read the declared thinking levels from a row's official `reasoningEfforts`.
+ *
+ * Levels come back in pi-ai's escalation order, independent of key order in
+ * the profile. `false` (explicit non-reasoning) and `undefined` (inherit the
+ * installed catalog) both yield an empty list.
+ */
+function levelsOfReasoningEfforts(value: unknown): readonly string[] {
+  const efforts = recordOf(value);
+  if (efforts === undefined) return [];
+  return THINKING_LEVELS.filter(level => efforts[level] !== undefined);
+}
+
+/** Read the provider-level default reasoning effort of one llm-pi-ai route. */
+function providerReasoningDefault(namespace: SettingsNamespaceView, provider: string): string | null {
+  const providers = recordOf(recordOf(namespace.user)?.providers);
+  const profile = providers === undefined ? undefined : recordOf(providers[provider]);
+  return typeof profile?.reasoning === 'string' ? profile.reasoning : null;
+}
+
+/**
+ * Read one row's declared reasoning levels, migrating the plugin's legacy
+ * `thinkingLevels` private field when the official field is absent.
+ */
+export function readReasoningLevels(row: Readonly<Record<string, unknown>>): readonly string[] {
+  const official = levelsOfReasoningEfforts(row.reasoningEfforts);
+  if (official.length > 0) return official;
+  if (Array.isArray(row.thinkingLevels)) {
+    const legacy = row.thinkingLevels.filter((entry): entry is string => typeof entry === 'string' && isThinkingLevel(entry));
+    return THINKING_LEVELS.filter(level => legacy.includes(level));
+  }
+  return [];
+}
+
+/**
+ * Read one row's full official reasoning config: levels from `reasoningEfforts`
+ * (with legacy migration) and the default from the provider-level `reasoning`
+ * effort (with legacy migration).
+ */
+export function readModelThinkingRow(
+  namespace: SettingsNamespaceView,
+  provider: string,
+  row: Readonly<Record<string, unknown>>,
+): { levels: readonly string[]; defaultLevel: string | null } {
+  const levels = readReasoningLevels(row);
+  let defaultLevel = providerReasoningDefault(namespace, provider);
+  if (defaultLevel === null && typeof row.defaultThinkingLevel === 'string' && isThinkingLevel(row.defaultThinkingLevel)) {
+    defaultLevel = row.defaultThinkingLevel;
+  }
+  return { levels, defaultLevel };
+}
+
+/**
  * Selectable thinking levels and the default level of one editable llm-pi-ai
  * model.
  *
- * The levels live as plugin-owned `thinkingLevels` (string array) in the raw
- * row (pi-ai strips it from derived views), but pi-ai's own model directory
- * only advertises reasoning capability — and therefore the conversation's
- * reasoning-effort picker — when a model declares the standard
- * `reasoningEfforts` field. Saving therefore also writes `reasoningEfforts`
- * (each level mapped to its same-name wire token, `off` omitted) so the custom
- * model gains an editable reasoning-effort picker in the composer, and mirrors
- * `defaultThinkingLevel` into the provider-level `reasoning` default.
+ * The levels are read directly from the model row's OFFICIAL `reasoningEfforts`
+ * field (level → same-name wire token, `off` → `null`): pi-ai's model directory
+ * advertises reasoning capability — and therefore the conversation's
+ * reasoning-effort picker — from that single field, so the plugin's editor is
+ * just an authoring surface for it. The default level is the provider-level
+ * `reasoning` effort, the official pre-selection for the composer picker.
+ *
+ * Rows saved by older plugin versions carry the private `thinkingLevels`
+ * / `defaultThinkingLevel` fields; they are honoured as a fallback on read and
+ * stripped again on write, migrating the stored configuration to the official
+ * fields in one save.
  */
 export interface ModelThinkingConfig {
   /** Whether the provider has a user-owned llm-pi-ai model row for this id. */
   available: boolean;
-  /** Offered thinking levels (`low`, `high`, …), in declaration order. */
+  /** Offered thinking levels (`low`, `high`, …), in pi-ai escalation order. */
   levels: readonly string[];
   /** The default level, or null when unset. */
   defaultLevel: string | null;
@@ -361,7 +432,7 @@ export interface ModelThinkingConfig {
   writable: boolean;
 }
 
-/** Read the plugin-owned thinking-level configuration of one model row. */
+/** Read the official reasoning configuration of one editable llm-pi-ai model. */
 export async function loadModelThinkingConfig(
   api: IApiClient,
   provider: string,
@@ -371,15 +442,11 @@ export async function loadModelThinkingConfig(
   const namespace = settings.namespaces.find((entry) => entry.ns === 'llm-pi-ai');
   const location = namespace === undefined ? undefined : locatePiAiModel(namespace, provider, model);
   if (location === undefined) return { available: false, levels: [], defaultLevel: null, writable: settings.writable };
-  const row = location.models[location.modelIndex];
-  const levels = Array.isArray(row.thinkingLevels)
-    ? row.thinkingLevels.filter((entry): entry is string => typeof entry === 'string')
-    : [];
-  const defaultLevel = typeof row.defaultThinkingLevel === 'string' ? row.defaultThinkingLevel : null;
+  const { levels, defaultLevel } = readModelThinkingRow(location.namespace, provider, location.models[location.modelIndex]);
   return { available: true, levels, defaultLevel, writable: settings.writable };
 }
 
-/** Write the plugin-owned thinking-level configuration, preserving sibling rows. */
+/** Write one model's official reasoning configuration, preserving sibling rows. */
 export async function saveModelThinkingConfig(
   api: IApiClient,
   provider: string,
@@ -397,34 +464,37 @@ export async function saveModelThinkingConfig(
     );
   }
   const hasThinking = levels.some((level) => level !== 'off');
-  // pi-ai advertises reasoning capability only when a model declares the
-  // standard `reasoningEfforts` schema field. Map each offered level to its
-  // same-name wire token and omit `off` so the picker offers those levels.
-  // When no thinking level is offered (or only `off`), omit the field so
-  // pi-ai keeps treating the model as non-reasoning — declaring `reasoningEfforts`
-  // with `off` alone would fail pi-ai's validation and hide the whole provider.
-  const reasoningEfforts: Record<string, unknown> | undefined = hasThinking
+  // The OFFICIAL `reasoningEfforts` declaration, unwrapped from the editor's
+  // level list: each non-`off` level maps to its same-name wire token, `off`
+  // maps to `null` ("supported, send nothing"). Schema rules (pi-ai):
+  //  - an empty dict is invalid, so an empty list omits the field (inherit the
+  //    installed catalog's capability);
+  //  - only `off` is invalid as a dict, so that collapses to `false` (explicit
+  //    non-reasoning);
+  //  - a real declaration must keep at least one non-`off` level.
+  const reasoningEfforts: false | Readonly<Record<string, string | null>> | undefined = hasThinking
     ? Object.fromEntries(
-        levels
-          .filter((level) => level !== 'off')
-          .map((level) => [level, level]),
+        levels.map((level) => [level, level === 'off' ? null : level]),
       )
-    : undefined;
-  const models = location.models.map((entry, index) => index === location.modelIndex
-    ? {
-        ...entry,
-        thinkingLevels: [...levels],
-        defaultThinkingLevel: defaultLevel,
-        ...(reasoningEfforts === undefined ? {} : { reasoningEfforts }),
-      }
-    : entry);
-  // Mirror the model's default into pi-ai's provider-level `reasoning` default
-  // (see `describableReasoningLevel`): the conversation picker uses it as the
-  // pre-selected effort. Guarded to a non-`off` level so it can actually apply.
+    : levels.length > 0
+      ? false
+      : undefined;
+  const models = location.models.map((entry, index) => {
+    if (index !== location.modelIndex) return entry;
+    const { thinkingLevels: _legacyLevels, defaultThinkingLevel: _legacyDefault, ...rest } = entry;
+    return {
+      ...rest,
+      ...(reasoningEfforts === undefined ? {} : { reasoningEfforts }),
+    };
+  });
+  // The provider-level `reasoning` default: the official pre-selection for the
+  // conversation picker (see `describableReasoningLevel`). Only levels the
+  // list offers may be defaulted; a null or absent default keeps the current
+  // provider value untouched.
   const providerProfile = recordOf(
     recordOf(recordOf(location.namespace.user)?.providers)?.[provider],
   );
-  const reasoningDefault = hasThinking && defaultLevel !== null && defaultLevel !== 'off'
+  const reasoningDefault = defaultLevel !== null && levels.includes(defaultLevel)
     ? defaultLevel
     : undefined;
   const patch: Record<string, unknown> = {

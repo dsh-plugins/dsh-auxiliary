@@ -53,6 +53,7 @@ import { ThinkingLevelSelect } from './ThinkingLevelSelect.js';
 import {
   loadModelGenerationCapability,
   loadModelImageCapability,
+  readModelThinkingRow,
   saveModelGenerationCapability,
   saveModelImageCapability,
   saveModelThinkingConfig,
@@ -170,9 +171,9 @@ interface PiAiModelRow {
   imageInput?: boolean;
   /** Persisted image-generation flag on the raw user row. */
   imageGen?: boolean;
-  /** Persisted plugin-owned thinking-level list on the raw user row. */
+  /** Declared reasoning levels (official `reasoningEfforts` keys, escalation order). */
   thinkingLevels?: readonly string[];
-  /** Persisted plugin-owned default thinking level on the raw user row. */
+  /** Provider-level default reasoning effort (official `reasoning` default). */
   defaultThinkingLevel?: string | null;
 }
 
@@ -1114,15 +1115,14 @@ async function piAiModelState(api: IApiClient): Promise<{
       const userRow = recordOf(model);
       if (userRow === undefined || typeof userRow.id !== 'string' || userRow.id.length === 0) continue;
       const resolvedModel = resolvedModels.find((entry) => entry?.id === userRow.id);
+      const { levels, defaultLevel } = readModelThinkingRow(namespace, provider, userRow);
       rows.push({
         provider,
         model: userRow.id,
         imageInput: declaresImageInput(resolvedModel ?? userRow, defaultInput),
         imageGen: userRow.imageGeneration === true,
-        thinkingLevels: Array.isArray(userRow.thinkingLevels)
-          ? userRow.thinkingLevels.filter((entry): entry is string => typeof entry === 'string')
-          : undefined,
-        defaultThinkingLevel: typeof userRow.defaultThinkingLevel === 'string' ? userRow.defaultThinkingLevel : undefined,
+        thinkingLevels: levels,
+        defaultThinkingLevel: defaultLevel,
       });
     }
   }
