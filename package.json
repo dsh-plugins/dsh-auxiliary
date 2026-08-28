@@ -72,7 +72,7 @@
     "@deepseek-ai/dsh-client-ui-slots": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-compaction": "^0.1.0-rc.8",
     "@deepseek-ai/dsh-compaction-basic": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-credentials": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-credentials": "^0.1.0-rc.8",
     "@deepseek-ai/dsh-fs": "^0.1.0-rc.8",
     "@deepseek-ai/dsh-host-webserver": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-llm": "^0.1.0-rc.8",
@@ -87,6 +87,7 @@
     "@types/react": "~18.3.1",
     "@types/react-dom": "~18.2.25",
     "react": "^18.2.0",
+    "react-dom": "^18.2.0",
     "tsdown": "0.22.2",
     "typescript": "^5.9.3"
   }
