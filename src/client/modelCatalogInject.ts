@@ -992,6 +992,19 @@ function rowBlockPresent(key: string): boolean {
 }
 
 /**
+ * Quiet window between a row's injected block disappearing (the provider card
+ * closed) and the deferred write below. The page's own Apply RPC can still be
+ * in flight when the editor unmounts — on 0.1.2 the unmount lands in the same
+ * frame the commit is awaited — and an immediate write would advance the
+ * namespace revision underneath the card's captured `expectedRevision`,
+ * failing the page's save with a settings-conflict. The window lets the
+ * page's commit land first; reopening the card (block back in the DOM) resets
+ * it so the write never interleaves with an open editor.
+ */
+const PENDING_WRITE_QUIET_MS = 800;
+const pendingQuietSince = new Map<string, number>();
+
+/**
  * Write pending marks for rows that have since been saved by the page's Apply.
  * A pending mark is only applied once its model exists in the user section and
  * its injected block is gone from the DOM; the latter means the provider card
@@ -1002,6 +1015,7 @@ async function applyPendingMarks(
   api: IApiClient,
   entries: ReadonlyArray<PiAiModelRow>,
   pending: PendingMap,
+  reschedule: () => void,
 ): Promise<boolean> {
   let applied = false;
   for (const [key, flags] of pending) {
@@ -1011,7 +1025,23 @@ async function applyPendingMarks(
     if (!entries.some((entry) => entry.provider === provider && entry.model === model)) continue;
     // The card is still open (or the row is still rendered): leave the mark
     // pending until the page's Apply replaces/removes the editor DOM.
-    if (rowBlockPresent(key)) continue;
+    if (rowBlockPresent(key)) {
+      pendingQuietSince.delete(key);
+      continue;
+    }
+    // The block just disappeared: hold the write until the page's own commit
+    // has had PENDING_WRITE_QUIET_MS to land, re-arming the check through the
+    // caller's scheduler since a quiet DOM fires no further sweeps.
+    const quietSince = pendingQuietSince.get(key);
+    if (quietSince === undefined) {
+      pendingQuietSince.set(key, Date.now());
+      reschedule();
+      continue;
+    }
+    if (Date.now() - quietSince < PENDING_WRITE_QUIET_MS) {
+      reschedule();
+      continue;
+    }
     try {
       if (flags['data-dsh-aux-image-input'] !== undefined) {
         await saveModelImageCapability(api, provider, model, flags['data-dsh-aux-image-input']);
@@ -1031,6 +1061,7 @@ async function applyPendingMarks(
     } catch {
       continue; // keep the pending mark; a later sweep retries.
     }
+    pendingQuietSince.delete(key);
     pending.delete(key);
     applied = true;
   }
@@ -1189,7 +1220,13 @@ export function startModelCatalogInjection(
   const run = async (): Promise<void> => {
     if (disposed) return;
     // Rows saved since the last sweep get their pending marks written first.
-    const applied = await applyPendingMarks(api, entries, pending).catch(() => false);
+    const applied = await applyPendingMarks(api, entries, pending, () => {
+      // A pending mark entered/inside its quiet window: no DOM change will
+      // re-trigger a sweep, so arm a timer past the window ourselves.
+      window.setTimeout(() => {
+        if (!disposed) schedule();
+      }, PENDING_WRITE_QUIET_MS + 60);
+    }).catch(() => false);
     if (disposed) return;
     // Do not inject rows from an unloaded (empty) entry list: the fresh-block
     // check would keep those placeholder blocks even after the data loads.
