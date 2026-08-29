@@ -92,7 +92,7 @@ export function registerImagegenTool(ctx: Context, get: () => ResolvedPluginConf
   const disposePrompt = ctx.systemPrompt.section({
     name: TOOL_SECTION,
     order: 165,
-    text: 'Use the generate_image tool to create images with the configured auxiliary image-generation model when the user asks to generate, draw, or create a picture. Pass a detailed "prompt" describing the desired image. To edit or re-style an existing image (img2img), pass its path as "reference". The tool saves the generated images under the current working directory (generated/) and displays them inline in the conversation; you can also inspect them with inspect_image to describe or verify them.'
+    text: 'Use the generate_image tool to create images with the configured auxiliary image-generation model when the user asks to generate, draw, or create a picture. Pass a detailed "prompt" describing the desired image. To edit or re-style an existing image (img2img), pass its path as "reference". The tool saves the generated images under the current working directory (.dsh/generated/) and displays them inline in the conversation; you can also inspect them with inspect_image to describe or verify them.'
   });
   const disposeTool = ctx.tools.register(dsh().tools.defineTool({
     name: 'generate_image',
@@ -236,7 +236,7 @@ export function registerImagegenTool(ctx: Context, get: () => ResolvedPluginConf
         throw new Error('generate_image: the provider returned no images');
       }
       const cwd = exec.agent?.session.header.cwd;
-      const dir = join(cwd ?? '.', 'generated');
+      const dir = join(cwd ?? '.', '.dsh', 'generated');
       await mkdir(dir, { recursive: true });
       const paths: string[] = [];
       const images: ImageAttachmentRef[] = [];

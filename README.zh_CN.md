@@ -160,7 +160,7 @@ harness 的 LLM 抽象只处理文本，因此生图直接对话提供商的 **O
 
 1. 注册 `generate_image` 工具，并注入系统提示词，引导主模型在用户要求生成/绘制图片时调用它。
 2. 工具从解析后的 `llm-pi-ai` 设置读取提供商的 `baseURL`，并通过 harness **凭据层**（`ctx.credentials.resolve`——env/file/user-env 层）解析 `apiKeyEnv`，随后调用 `POST {baseURL}/images/generations`，请求体 `{model, prompt, size, n}`。
-3. 返回的图片（base64 或 URL）写入工作目录（`generated/`），返回文件路径；主模型可用 `inspect_image` 复核。
+3. 返回的图片（base64 或 URL）写入工作目录（`.dsh/generated/`），返回文件路径；主模型可用 `inspect_image` 复核。
 
 **模型能力标记**：选择器只列出标记了 **允许图片生成** 的模型——在模型设置中勾选该框（向 `llm-pi-ai` 命名空间的原始 user 段写入 `imageGeneration: true`）。只标记上游端点确实支持生图的模型。
 
@@ -210,7 +210,7 @@ harness 的 LLM 抽象只处理文本，因此生图直接对话提供商的 **O
 
 - `inspect_image`——视觉理解：文件路径 + 可选问题 → 附件层 → 视觉路由 → 文字答案。
 - `describe_image`——转交：读取聊天中 `[image: …]` 引用里的 JSON，经视觉路由作答。
-- `generate_image`——生图：提示词（+size/n）→ 提供商 images API（凭据层）→ `generated/` 下的 PNG → 路径。
+- `generate_image`——生图：提示词（+size/n）→ 提供商 images API（凭据层）→ `.dsh/generated/` 下的 PNG → 路径。
 
 每个工具只在其功能启用且路由完整时注册（reconcile 模式），模型永远看不到用不了的工具。
 
