@@ -134,3 +134,44 @@ jobs:
         env:
           DIST_TAG: ${{ steps.release.outputs.dist_tag }}
         run: npm publish --tag "$DIST_TAG"
+
+  # 正式版（tag 推送 → dist-tag=latest）发布后，把 npm latest 元数据回写到
+  # 仓库根的 npm-latest.json：从 registry 读取 dist-tags.latest 与该版本的
+  # 发布时间 / tarball / integrity，以 github-actions[bot] 提交回 main。
+  # 参考 dsh-launcher ci.yml 的 bump-version 回写模式。内容幂等——同一 latest
+  # 版本重复运行无 diff，不产生空提交。
+  dump-latest:
+    name: Dump npm latest version
+    needs: publish
+    if: >-
+      github.event_name == 'push' &&
+      startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          # 提交必须落在 tag 所指向的分支（main）。
+          ref: main
+      - name: Set up Node.js
+        uses: actions/setup-node@v6.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: ${{ env.NPM_REGISTRY }}
+      - name: Dump npm latest metadata
+        run: node scripts/dump-npm-latest.mjs
+      - name: Commit and push npm-latest.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add npm-latest.json
+          if git diff --cached --quiet; then
+            echo "npm-latest.json unchanged — nothing to commit"
+            exit 0
+          fi
+          git commit -m "chore(release): dump npm latest version"
+          git push origin main

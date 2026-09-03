@@ -1,0 +1,10 @@
+{
+  "name": "@dsh-plugin/dsh-auxiliary",
+  "latest": "0.6.3",
+  "publishedAt": "2026-08-29T02:42:30.504Z",
+  "dist": {
+    "tarball": "https://registry.npmjs.org/@dsh-plugin/dsh-auxiliary/-/dsh-auxiliary-0.6.3.tgz",
+    "integrity": "sha512-2fyvG0JzJmktg35bNDiK/8cIO1TPOzomcXXRgO2ncEbyN0xahS4fA2xFlbF+cHBhJ49xGMQ3O5SFSQwqt7uWTg==",
+    "unpackedSize": 559053
+  }
+}
