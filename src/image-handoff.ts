@@ -2,36 +2,26 @@
  * Image handoff: let a text-only main model work with chat images by letting
  * the selected vision model describe them.
  *
- * Two host seams make this possible without touching core packages:
- *
- * 1. The `llm/stream` waterfall — agent-loop's every generation call (plain or
- *    prepared) goes through `ctx.waterfall(this, 'llm/stream', ...)`. A plugin
- *    listener can veto the chain and dispatch a rewritten request instead.
- *    Because agent-loop deep-freezes its request, the listener rebuilds a fresh
- *    options object and re-enters the waterfall with a guard flag.
- *
- * 2. `ctx.llm.resolveModelInfo` — the host's image admission preflight
- *    (dsh-host-apiproxy `prompt` / `selectModel`) rejects a request when the
- *    current model's `inputModalities` omit `image`. The wrapper claims image
- *    input for such models while the handoff is enabled, so the image reaches
- *    the session; the stream listener then replaces the image block with a
- *    text reference the text-only model can act on via `describe_image`.
- *
- * Side effects of the claim are bounded: the model catalog builder only reads
- * `reasoning` from the resolved info, the catalog checkboxes read the settings
- * document directly, and the pi-ai downgrade path is bypassed because the
- * stream listener removes image blocks before adapter dispatch.
+ * The `llm/stream` waterfall sees every generation call. Its listener resolves
+ * through the captured real `resolveModelInfo`: native image-capable routes pass
+ * through, while text-only or undeclared routes receive immutable references.
+ * A request-local guard permits concurrent rewritten dispatches. A scoped
+ * resolver wrapper advertises handoff-backed image admission for text-only main
+ * routes, but never inflates the selected auxiliary route used by `askVision`.
  *
  * @module dsh-auxiliary/image-handoff
  */
 import type { Context } from '@deepseek-ai/cordis';
-import type { ContentBlock, GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm';
+import type { ContentBlock, GenerateOptions } from '@deepseek-ai/dsh-llm';
 import { deepFreeze } from './dsh.js';
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment';
 import type { ResolvedPluginConfig } from './config.js';
 
-/** Whether one request targets the configured vision route itself. */
-function isVisionRoute(options: GenerateOptions, vision: ResolvedPluginConfig['vision']): boolean {
+/** Whether one request targets the configured auxiliary vision route itself. */
+function isVisionRoute(
+  options: Pick<GenerateOptions, 'provider' | 'model'>,
+  vision: ResolvedPluginConfig['vision'],
+): boolean {
   return options.provider === vision.provider && options.model === vision.model;
 }
 
@@ -47,8 +37,6 @@ function imageReference(attachment: ImageAttachmentRef): string {
  * image walk (`contentHasImage`) recurses into tool-result content, so a
  * top-level-only rewrite would leave a nested image visible to text-only
  * adapters — the failure this recursion exists to prevent.
- * @param block - the block to rewrite.
- * @returns the rewritten block and whether it changed.
  */
 function rewriteBlock(block: ContentBlock): { block: ContentBlock; changed: boolean } {
   if (block.type === 'image') {
@@ -89,48 +77,78 @@ function rewriteImages(options: GenerateOptions): GenerateOptions | undefined {
 }
 
 /**
- * Install the image-handoff seams. Returns a disposer that removes the stream
- * listener and restores the original `resolveModelInfo`.
+ * Install capability-aware image-handoff stream and admission seams.
  *
- * @param ctx - the plugin context with the `llm` service.
- * @param get - current resolved plugin config snapshot.
+ * Native image-capable routes retain their original `ImageBlock`s. Text-only
+ * and undeclared routes are rewritten to durable `[image: ...]` references.
+ * The returned disposer is idempotent and will not overwrite a resolver wrapper
+ * installed by another plugin after this one.
  */
 export function registerImageHandoff(ctx: Context, get: () => ResolvedPluginConfig): () => void {
+  let live = true;
   const enabled = (): boolean => {
+    if (!live) return false;
     const resolved = get();
     const vision = resolved.vision;
     return resolved.tool.enabled && vision.handoff && vision.provider !== undefined && vision.model !== undefined;
   };
 
-  // Re-entrancy guard: the rewritten dispatch re-enters this listener once.
-  let active = false;
+  // Keep both forms: the bound resolver is the capability source used by the
+  // stream seam, while the unbound function is restored by exact identity.
+  const originalResolve = ctx.llm.resolveModelInfo;
+  const resolveReal = originalResolve.bind(ctx.llm);
+
+  // Request-local guard: rewritten dispatches re-enter the waterfall, while
+  // unrelated concurrent requests must continue to receive capability checks.
+  const rewrittenRequests = new WeakSet<GenerateOptions>();
   const disposeListener = ctx.on('llm/stream', (options, next) => {
-    if (active) return next();
-    if (!enabled()) return next();
+    if (rewrittenRequests.has(options) || !enabled()) return next();
     const vision = get().vision;
     if (isVisionRoute(options, vision)) return next();
     const rewritten = rewriteImages(options);
     if (rewritten === undefined) return next();
-    active = true;
-    try {
-      return ctx.llm.stream(rewritten);
-    } finally {
-      active = false;
-    }
+
+    return (async function* () {
+      // Iteration starts lazily, so re-check disposal before doing async work.
+      if (!live) {
+        yield* next();
+        return;
+      }
+      const info = await resolveReal(options.provider, options.model, options.signal);
+      // Capability lookup can outlive plugin teardown. Never begin a rewritten
+      // dispatch once disposal has started; continue the already-entered chain.
+      if (!live || info.inputModalities?.includes('image')) {
+        yield* next();
+        return;
+      }
+      rewrittenRequests.add(rewritten);
+      try {
+        yield* ctx.llm.stream(rewritten);
+      } finally {
+        rewrittenRequests.delete(rewritten);
+      }
+    })();
   });
 
-  const originalResolve = ctx.llm.resolveModelInfo.bind(ctx.llm);
-  ctx.llm.resolveModelInfo = async (provider, model, signal) => {
-    const info = await originalResolve(provider, model, signal);
-    if (enabled() && info.inputModalities !== undefined && !info.inputModalities.includes('image')) {
+  const resolveWithHandoff: Context['llm']['resolveModelInfo'] = async (provider, model, signal) => {
+    const info = await resolveReal(provider, model, signal);
+    const vision = get().vision;
+    if (enabled() && !isVisionRoute({ provider, model }, vision)
+      && info.inputModalities !== undefined && !info.inputModalities.includes('image')) {
       return { ...info, inputModalities: [...info.inputModalities, 'image'] };
     }
     return info;
   };
+  ctx.llm.resolveModelInfo = resolveWithHandoff;
 
   return () => {
+    if (!live) return;
+    live = false;
     disposeListener();
-    ctx.llm.resolveModelInfo = originalResolve;
+    // Do not clobber a wrapper another plugin installed after registration.
+    if (ctx.llm.resolveModelInfo === resolveWithHandoff) {
+      ctx.llm.resolveModelInfo = originalResolve;
+    }
   };
 }
 

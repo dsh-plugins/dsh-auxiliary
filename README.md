@@ -85,17 +85,21 @@ The tool commits the file through the `ctx.attachments` seam and asks the select
 
 ### Image handoff (chat images with a text-only main model)
 
-When **Image handoff** (`vision.handoff`, default on) is enabled with a vision route selected, attaching an image to a text-only main model no longer fails:
+When **Image handoff** (`vision.handoff`, default on) is enabled with a vision route selected, image delivery is native-first and falls back safely for routes without declared image support:
 
-1. A runtime wrapper on `ctx.llm.resolveModelInfo` claims image input for models that declare none while the handoff is active, so the image admission preflight passes (the model catalog and the per-model checkboxes are unaffected — they read the settings document directly).
-2. A listener on the official `llm/stream` waterfall replaces the image block with a text reference `[image: {"attachmentId":…,"mediaType":…}]` before the adapter sees it; the text-only model never receives an image payload (vision-route calls such as `inspect_image` are left untouched).
-3. The system prompt tells the main model to call `describe_image` with the exact JSON from the reference; the tool reads the stored attachment bytes, asks the selected vision model, and returns a text description.
+1. A runtime wrapper on `ctx.llm.resolveModelInfo` claims image input for text-only main routes while handoff is active, so the image admission preflight passes (the model catalog and per-model checkboxes are unaffected because they read the settings document directly). The configured auxiliary vision route is never inflated, so `inspect_image`/`describe_image` still reject a mistakenly selected text-only vision model.
+2. For each request containing images, a listener on the official `llm/stream` waterfall checks the exact request's provider/model through the original capability resolver. Image-capable routes receive the original `ImageBlock`s unchanged. Text-only routes and routes with undeclared modalities receive durable text references such as `[image: {"attachmentId":…,"mediaType":…}]`; nested images in tool results are rewritten too.
+3. The system prompt tells a text-only main model to call `describe_image` with the exact JSON from the reference; the tool reads the stored attachment bytes, asks the selected vision model, and returns a text description.
 
-The reference is plain text, so it survives restarts, forks, and replays. Both seams are plugin-side; no core package is modified. Disable `vision.handoff` to restore the original rejection behavior.
+The rewrite is immutable and request-local, so concurrent native and fallback streams cannot affect one another; aborts, errors, early iterator closure, and plugin disposal retain the host stream semantics. References are plain text and therefore survive restarts, forks, and replays. Both seams are plugin-side; no core package is modified. Disable `vision.handoff` to restore the original admission and stream behavior.
 
 ### Skipping injection for vision-capable main models
 
-When **Skip when the main model supports images** (`vision.skipWhenMainModelSupportsImage`, default off) is enabled, a session whose main model declares image input gets no `inspect_image`/`describe_image` tool schemas and no vision prompt section — the model reads attached images natively. The check runs per prompt assembly against the host's original `resolveModelInfo` (captured before the handoff wrapper, so an active handoff cannot make a text-only model look image-capable); the tools stay registered, so an in-flight or replayed call still executes.
+When **Skip when the main model supports images** (`vision.skipWhenMainModelSupportsImage`, default off) is enabled, a session whose main model declares image input gets no `inspect_image`/`describe_image` tool schemas and no vision prompt section — the model reads attached images natively. This existing option uses the public generic prompt-assembly context and the host's original `resolveModelInfo` (captured before the handoff wrapper); the tools stay registered, so an in-flight or replayed call still executes.
+
+This is intentionally separate from image handoff's exact `llm/stream` route check. Exact per-attempt **Auto / Always / Disabled** tool and prompt visibility would require Harness core to publish the prepared request route/capabilities to prompt assembly together with a request-lifetime tool restriction contract. That contract is not part of the released public API, so this plugin-only change does not add a dead setting or depend on private agent-loop types.
+
+The released `llm/stream` contract also describes agent-loop request content as read-only. This release therefore keeps the plugin's pre-existing compatibility shim but makes it capability-aware and concurrency-safe; a fully first-class handoff should follow with a core-owned, session-logged image-reference projection/admission hook so plugins do not have to redispatch rewritten loop requests.
 
 ### Context compaction
 
@@ -358,6 +362,7 @@ Apply closes, so they never race the page's revision checks.
 ```bash
 npm install          # installs dependencies (typescript, @deepseek-ai/* peers)
 npm run typecheck    # tsc --noEmit
+npm test             # builds and runs the Node regression tests
 npm run build        # emits lib/
 ```
 

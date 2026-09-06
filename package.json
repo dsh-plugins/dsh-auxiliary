@@ -52,6 +52,7 @@
     "clean": "node --input-type=module -e \"import { rmSync } from 'node:fs'; rmSync('lib', { recursive: true, force: true });\"",
     "build": "npm run clean && tsc -p tsconfig.json && tsc -p tsconfig.client.build.json && tsdown",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json --noEmit",
+    "test": "npm run build && node --test tests/*.test.mjs",
     "prepack": "npm run build"
   },
   "dependencies": {
