@@ -290,6 +290,8 @@ interface FeatureCardProps {
   usage: string;
   /** Optional second checkbox label; only the vision card passes it. */
   handoffLabel?: string;
+  /** Optional third checkbox label; only the vision card passes it. */
+  skipLabel?: string;
   /** Extra feature-specific controls rendered above the usage note. */
   children?: ReactNode;
   initial: AuxFeatureSettings;
@@ -310,6 +312,7 @@ function FeatureCard({
   pickerLabel,
   usage,
   handoffLabel,
+  skipLabel,
   children,
   initial,
   groups,
@@ -339,6 +342,12 @@ function FeatureCard({
 
   const updateHandoff = (handoff: boolean): void => {
     setDraft((previous) => ({ ...previous, handoff }));
+    setSaved(false);
+    setError(undefined);
+  };
+
+  const updateSkip = (skipWhenMainModelSupportsImage: boolean): void => {
+    setDraft((previous) => ({ ...previous, skipWhenMainModelSupportsImage }));
     setSaved(false);
     setError(undefined);
   };
@@ -382,6 +391,18 @@ function FeatureCard({
             onChange={(event) => { updateHandoff(event.target.checked); }}
           />
           <span>{handoffLabel}</span>
+        </label>
+      ) : null}
+      {skipLabel !== undefined ? (
+        <label style={toggleStyle}>
+          <input
+            type="checkbox"
+            checked={draft.skipWhenMainModelSupportsImage ?? false}
+            disabled={locked}
+            style={checkboxStyle}
+            onChange={(event) => { updateSkip(event.target.checked); }}
+          />
+          <span>{skipLabel}</span>
         </label>
       ) : null}
       <label style={fieldStyle}>
@@ -578,6 +599,7 @@ export function AuxiliarySection({ api, t }: AuxiliarySectionProps): JSX.Element
             pickerLabel={t('visionPickerLabel')}
             usage={t('visionUsage')}
             handoffLabel={t('visionHandoff')}
+            skipLabel={t('visionSkipWhenImageCapable')}
             initial={settings.vision}
             groups={catalog.groups}
             disabled={cardsDisabled}

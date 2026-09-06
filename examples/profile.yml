@@ -12,6 +12,8 @@
     # 该选择只影响 inspect_image，无需在此配置自定义端点或密钥。
     vision:
       maxTokens: 2048               # 单次 inspect_image 输出上限
+      # 主模型支持图片输入时，不向该会话注入视觉工具和提示词（默认 false）。
+      # skipWhenMainModelSupportsImage: true
 
     tool:
       # 视觉功能的开关与 compact.enabled 相互独立。

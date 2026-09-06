@@ -51,7 +51,8 @@ const Config = z.object({
     provider: z.string().description('Select an already-configured provider route for inspect_image.'),
     model: z.string().description('Select a model from the selected provider route for inspect_image.'),
     maxTokens: z.number().step(1).min(1).default(DEFAULT_VISION_MAX_TOKENS),
-    handoff: z.boolean().default(true).description('When the main model is text-only, allow chat images as references and let it fetch their content via describe_image.')
+    handoff: z.boolean().default(true).description('When the main model is text-only, allow chat images as references and let it fetch their content via describe_image.'),
+    skipWhenMainModelSupportsImage: z.boolean().default(false).description('When the session\'s main model already supports image input, do not inject the inspect_image/describe_image tools or their prompt guidance into that session.')
   }),
   tool: z.object({
     enabled: z.boolean().default(true),
@@ -105,6 +106,11 @@ export interface ResolvedVisionConfig {
   readonly maxTokens: number;
   /** Image handoff: text-only main models may reference chat images via describe_image. */
   readonly handoff: boolean;
+  /**
+   * Skip injecting the vision tools and their prompt guidance into sessions
+   * whose main model already supports image input.
+   */
+  readonly skipWhenMainModelSupportsImage: boolean;
 }
 
 /** Resolved `inspect_image` tool policy. */
@@ -231,7 +237,8 @@ export function resolvePluginConfig(config: PluginConfig): ResolvedPluginConfig 
       provider: visionProvider,
       model: visionModel,
       maxTokens: vision.maxTokens ?? DEFAULT_VISION_MAX_TOKENS,
-      handoff: vision.handoff ?? true
+      handoff: vision.handoff ?? true,
+      skipWhenMainModelSupportsImage: vision.skipWhenMainModelSupportsImage ?? false
     },
     tool: {
       enabled: tool.enabled ?? true,

@@ -31,6 +31,8 @@ export const zh = {
   visionPickerLabel: '视觉模型（需支持图片输入）',
   /** Image handoff switch label. */
   visionHandoff: '主模型不支持图片时，聊天图片以引用形式发送，由 describe_image 转交视觉模型获取内容',
+  /** Skip-injection switch label. */
+  visionSkipWhenImageCapable: '主模型支持图片输入时，不向该会话注入 inspect_image/describe_image 工具和对应提示词',
   /** Injected model-catalog checkbox label. */
   imageCapabilityToggle: '允许图片输入',
   /** Injected model-catalog checkbox explanation. */
@@ -170,6 +172,7 @@ export const en: Record<AuxiliaryKey, string> = {
   visionToggle: 'Enable inspect_image',
   visionPickerLabel: 'Vision model (must support image input)',
   visionHandoff: 'When the main model is text-only, chat images are sent as references and describe_image hands them to the vision model for their content',
+  visionSkipWhenImageCapable: 'When the main model supports image input, do not inject the inspect_image/describe_image tools or their prompt guidance into that session',
   imageCapabilityToggle: 'Allow image input',
   imageCapabilityDescription: 'Enable only if the upstream model accepts images.',
   imageCapabilityLoading: 'Reading the image-input declaration…',

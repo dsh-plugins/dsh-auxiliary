@@ -51,6 +51,8 @@ export interface AuxFeatureSettings extends AuxRoute {
   enabled: boolean;
   /** Image handoff toggle; only meaningful for the vision feature. */
   handoff?: boolean;
+  /** Skip injecting vision tools/prompt when the main model sees images; vision only. */
+  skipWhenMainModelSupportsImage?: boolean;
 }
 
 /** The optional compression-engine policy surfaced by the compaction card. */
@@ -105,6 +107,8 @@ export interface AuxFeatureDraft extends AuxRoute {
   enabled: boolean;
   /** Image handoff toggle; only the vision card edits it. */
   handoff?: boolean;
+  /** Skip-injection toggle; only the vision card edits it. */
+  skipWhenMainModelSupportsImage?: boolean;
 }
 
 /** Additional local validation code used before an RPC write. */
@@ -559,6 +563,7 @@ interface AuxNamespaceValue {
     provider?: string;
     model?: string;
     handoff?: boolean;
+    skipWhenMainModelSupportsImage?: boolean;
   };
   tool?: {
     enabled?: boolean;
@@ -608,6 +613,7 @@ function snapshotOf(view: SettingsNamespaceView): AuxSettingsSnapshot {
       provider: value.vision?.provider,
       model: value.vision?.model,
       handoff: value.vision?.handoff ?? true,
+      skipWhenMainModelSupportsImage: value.vision?.skipWhenMainModelSupportsImage ?? false,
     },
     compact: {
       enabled: value.compact?.enabled ?? false,
@@ -673,7 +679,7 @@ function routeText(value: string | undefined): string {
 }
 
 /** Normalize and validate a feature draft before constructing its patch. */
-function normalizedDraft(draft: AuxFeatureDraft): { enabled: boolean; provider: string; model: string; handoff?: boolean } {
+function normalizedDraft(draft: AuxFeatureDraft): { enabled: boolean; provider: string; model: string; handoff?: boolean; skipWhenMainModelSupportsImage?: boolean } {
   const provider = routeText(draft.provider);
   const model = routeText(draft.model);
   if (Boolean(provider) !== Boolean(model)) {
@@ -687,6 +693,7 @@ function normalizedDraft(draft: AuxFeatureDraft): { enabled: boolean; provider: 
     provider,
     model,
     ...(draft.handoff === undefined ? {} : { handoff: draft.handoff }),
+    ...(draft.skipWhenMainModelSupportsImage === undefined ? {} : { skipWhenMainModelSupportsImage: draft.skipWhenMainModelSupportsImage }),
   };
 }
 
@@ -719,6 +726,7 @@ export async function saveAuxFeature(
         provider: normalized.provider,
         model: normalized.model,
         ...(normalized.handoff === undefined ? {} : { handoff: normalized.handoff }),
+        ...(normalized.skipWhenMainModelSupportsImage === undefined ? {} : { skipWhenMainModelSupportsImage: normalized.skipWhenMainModelSupportsImage }),
       },
       tool: {
         enabled: normalized.enabled,

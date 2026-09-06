@@ -93,6 +93,10 @@ When **Image handoff** (`vision.handoff`, default on) is enabled with a vision r
 
 The reference is plain text, so it survives restarts, forks, and replays. Both seams are plugin-side; no core package is modified. Disable `vision.handoff` to restore the original rejection behavior.
 
+### Skipping injection for vision-capable main models
+
+When **Skip when the main model supports images** (`vision.skipWhenMainModelSupportsImage`, default off) is enabled, a session whose main model declares image input gets no `inspect_image`/`describe_image` tool schemas and no vision prompt section — the model reads attached images natively. The check runs per prompt assembly against the host's original `resolveModelInfo` (captured before the handoff wrapper, so an active handoff cannot make a text-only model look image-capable); the tools stay registered, so an in-flight or replayed call still executes.
+
 ### Context compaction
 
 Every summarization call carries the official `GenerateOptions.purpose: 'compaction'`. The plugin installs an `llm/stream` waterfall listener that reroutes those calls to the configured pair:
@@ -242,6 +246,7 @@ All fields are optional; defaults are shown.
     vision:
       maxTokens: 2048                      # inspect_image output cap (provider/model written by the settings page)
       handoff: true                        # text-only main models may reference chat images via describe_image
+      skipWhenMainModelSupportsImage: false # image-capable main models get no vision tools/prompt injected
     tool:
       enabled: true                        # register the inspect_image tool
       maxImageBytes: 10485760              # per-file size cap

@@ -9,11 +9,15 @@
  */
 import type { Context } from '@deepseek-ai/cordis';
 import type { BlockAssembler, ContentBlock, GenerateOptions } from '@deepseek-ai/dsh-llm';
+import type { AssembleContext, PromptAssembly } from '@deepseek-ai/dsh-system-prompt';
 // Type-only side-effect imports: these pull the `declare module 'cordis'`
 // Context augmentations (`ctx.fs`, `ctx.tools`) the plugin relies on. They are
 // erased at compile time, so they never reach the runtime import graph.
 import type {} from '@deepseek-ai/dsh-fs';
 import type {} from '@deepseek-ai/dsh-tools';
+// `AssembleContext.agent` 的增强声明来自 dsh-agent（runtime-types.ts 经包根
+// 导出）；同为类型层引用，编译期擦除。
+import type {} from '@deepseek-ai/dsh-agent';
 import type { ImageMediaType, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment';
 import { deepFreeze, dsh, llm } from './dsh.js';
 import { PLUGIN_NAME, type ResolvedPluginConfig } from './config.js';
@@ -32,6 +36,12 @@ function argsError(messages: string[]): Error {
 
 /** Timeout code stamped on vision-tool aborts. */
 const VISION_TOOL_TIMEOUT_CODE = 'AUX_VISION_TOOL_TIMEOUT';
+
+/** Prompt-section name contributed alongside the tools. */
+const VISION_PROMPT_SECTION = 'tool:inspect_image';
+
+/** Model-facing tool names hidden together when the main model sees images. */
+const VISION_TOOL_NAMES: ReadonlySet<string> = new Set(['inspect_image', 'describe_image']);
 
 /** Default question when the model does not supply one. */
 const DEFAULT_QUESTION = 'Describe this image in detail, including any visible text, UI elements, diagrams, or code.';
@@ -179,14 +189,72 @@ async function askVision(
 }
 
 /**
+ * Install the `system-prompt/assemble` filter backing
+ * `vision.skipWhenMainModelSupportsImage`.
+ *
+ * The waterfall is scope-filtered but an untagged listener observes every
+ * agent's assembly, and agent-loop passes the assembling agent in the
+ * context, so the session's main model route is read from
+ * `context.agent.options`. Capability is probed per assembly (the host
+ * resolver caches catalogs and the user can re-declare a model's image
+ * capability at any time, so a plugin-side cache would go stale); a probe
+ * failure keeps the tools visible rather than hiding them blindly.
+ */
+function registerSkipFilter(ctx: Context, get: () => ResolvedPluginConfig, options?: VisionToolOptions): () => void {
+  const resolveModelInfo = options?.resolveModelInfo ?? ctx.llm.resolveModelInfo.bind(ctx.llm);
+  return ctx.on('system-prompt/assemble', async (assembly: PromptAssembly, context: AssembleContext, next: () => Promise<PromptAssembly>) => {
+    const transformed = await next();
+    if (!get().vision.skipWhenMainModelSupportsImage) return transformed;
+    const provider = context.agent?.options.provider;
+    const model = context.agent?.options.model;
+    if (provider === undefined || model === undefined) return transformed;
+    let capable: boolean;
+    try {
+      const info = await resolveModelInfo(provider, model, context.signal);
+      // Unknown modalities (undefined) count as text-only: only a positive
+      // image declaration justifies hiding the vision tools.
+      capable = info.inputModalities !== undefined && info.inputModalities.includes('image');
+    } catch {
+      return transformed;
+    }
+    if (!capable) return transformed;
+    return {
+      ...transformed,
+      sections: transformed.sections.filter((section) => section.name !== VISION_PROMPT_SECTION),
+      tools: transformed.tools.filter((tool) => !VISION_TOOL_NAMES.has(tool.name)),
+    };
+  });
+}
+
+/**
+ * Optional seams accepted by {@link registerVisionTool}.
+ */
+export interface VisionToolOptions {
+  /**
+   * Main-model capability probe. It MUST be the host's original
+   * `ctx.llm.resolveModelInfo`, captured before `registerImageHandoff`
+   * installs its claim wrapper: with the handoff active the wrapped resolver
+   * reports image input for every text-only model, and the skip check would
+   * then hide `describe_image` exactly when the handoff needs it.
+   */
+  resolveModelInfo?: Context['llm']['resolveModelInfo'];
+}
+
+/**
  * Register the `inspect_image` and `describe_image` tools plus system-prompt
  * guidance.
  *
- * @returns a disposer that removes both registrations made by this function.
+ * The tools and prompt section stay registered while enabled; the optional
+ * `vision.skipWhenMainModelSupportsImage` policy instead filters them out of
+ * each affected session's prompt assembly, so a model that already had them
+ * in an earlier request can still complete a call in flight.
+ *
+ * @returns a disposer that removes all registrations made by this function.
  */
-export function registerVisionTool(ctx: Context, get: () => ResolvedPluginConfig): () => void {
+export function registerVisionTool(ctx: Context, get: () => ResolvedPluginConfig, options?: VisionToolOptions): () => void {
+  const disposeSkipFilter = registerSkipFilter(ctx, get, options);
   const disposePrompt = ctx.systemPrompt.section({
-    name: 'tool:inspect_image',
+    name: VISION_PROMPT_SECTION,
     order: 160,
     text: 'Use the inspect_image tool to analyze local image files (screenshots, photos, diagrams) with the selected vision model. Pass the file path and an optional question; the answer comes back as text. When the conversation contains an image reference like [image: {...}], the image was attached to the chat: call describe_image with the exact JSON from that reference to get the image content as text.'
   });
@@ -298,5 +366,6 @@ export function registerVisionTool(ctx: Context, get: () => ResolvedPluginConfig
     disposeTool();
     disposeDescribe();
     disposePrompt();
+    disposeSkipFilter();
   };
 }

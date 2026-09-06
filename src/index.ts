@@ -40,7 +40,7 @@ interface DshLoaderApi extends DshFacade {
 }
 
 export { Config, PLUGIN_NAME, resolvePluginConfig } from './config.js';
-export { registerVisionTool } from './vision-tool.js';
+export { registerVisionTool, type VisionToolOptions } from './vision-tool.js';
 export { registerImageHandoff } from './image-handoff.js';
 export { registerApproveRouter, registerApproveStateEndpoint, isApprovePluginInstalled, isApproveReviewCall } from './approve-router.js';
 export { registerSubagentRouter } from './subagent-router.js';
@@ -85,6 +85,12 @@ export function apply(ctx: Context, config: PluginConfig): void {
   setDshFacade(loader);
   ctx.effect(() => () => clearDshFacade());
 
+  // 在任何 reconcile 之前捕获宿主的原始 resolveModelInfo：image-handoff 启用后
+  // 会包装它，给所有纯文本模型虚报图片输入能力；视觉工具的「主模型支持图片时
+  // 跳过注入」检查必须看到真实模态，否则会在 handoff 最需要 describe_image 的
+  // 会话里反而把它隐藏掉。
+  const resolveModelInfo = ctx.llm.resolveModelInfo.bind(ctx.llm);
+
   let current = () => config;
   let lastRaw: PluginConfig | undefined;
   let lastGood: ResolvedPluginConfig | undefined;
@@ -120,7 +126,7 @@ export function apply(ctx: Context, config: PluginConfig): void {
   const reconcileVisionTool = (): void => {
     if (resolved().tool.enabled) {
       if (visionToolDisposer === undefined) {
-        visionToolDisposer = registerVisionTool(ctx, resolved);
+        visionToolDisposer = registerVisionTool(ctx, resolved, { resolveModelInfo });
       }
       return;
     }

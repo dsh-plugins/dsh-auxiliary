@@ -90,6 +90,10 @@ tool:
 
 引用是纯文本，重启、fork 与历史重放后依然可用。两个挂接点都在插件内，核心包零修改。关闭 `vision.handoff` 可恢复原来的拒绝行为。
 
+### 主模型支持图片时跳过注入
+
+勾选 **主模型支持图片输入时跳过注入**（`vision.skipWhenMainModelSupportsImage`，默认关闭）后，主模型已声明图片输入的会话不再注入 `inspect_image`/`describe_image` 工具描述和对应提示词——模型直接以原生能力读取聊天图片。该判断在每次提示词装配时基于宿主原始的 `resolveModelInfo`（在转交包装之前捕获，因此转交开启不会把纯文本模型误报为支持图片）；工具保持注册，进行中或历史重放的调用仍可执行。
+
 ### 上下文压缩
 
 每次摘要调用都携带官方标记 `GenerateOptions.purpose: 'compaction'`。插件安装 `llm/stream` waterfall 监听器，把这类调用改路由到配置的模型对：
@@ -239,6 +243,7 @@ harness 的 LLM 抽象只处理文本，因此生图直接对话提供商的 **O
     vision:
       maxTokens: 2048                      # inspect_image 输出上限（provider/model 由设置页写入）
       handoff: true                        # 主模型不支持图片时，聊天图片以引用形式发送并由 describe_image 转交
+      skipWhenMainModelSupportsImage: false # 主模型支持图片输入时，不注入视觉工具与提示词
     tool:
       enabled: true                        # 注册 inspect_image 工具
       maxImageBytes: 10485760              # 单文件大小上限
