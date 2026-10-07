@@ -15,13 +15,13 @@ import {
   type CSSProperties,
   type ReactNode,
 } from 'react';
-import type { IApiClient } from '@deepseek-ai/dsh-client-connection/client';
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots';
 import type { SettingsSectionOwnerProps } from '@deepseek-ai/dsh-client-ui-settings/client';
 import {
   AuxiliaryApiError,
   conflictRevision,
   filterImageGenGroups,
+  isSettingsConflictCode,
   loadApproveHostState,
   loadAuxSettings,
   loadImageGenModelKeys,
@@ -32,6 +32,7 @@ import {
   type AuxFeatureSettings,
   type AuxSettings,
   type AuxSettingsSnapshot,
+  type IApiClient,
   type ModelCatalog,
 } from './api.js';
 import { ModelPicker } from './ModelPicker.js';
@@ -275,7 +276,9 @@ function ThresholdControl({
 /** Translate structured save failures while preserving ordinary diagnostics. */
 function saveErrorMessage(cause: unknown, t: TranslateNS<'dsh-auxiliary'>): string {
   if (cause instanceof AuxiliaryApiError) {
-    if (cause.code === 'settings-conflict') return t('settingsConflict');
+    // 0.2.0 names the stale-revision refusal `settings/conflict`; the hyphenated
+    // 0.1.x code is still accepted for a Host on the older wire.
+    if (isSettingsConflictCode(cause.code)) return t('settingsConflict');
     if (cause.code === 'invalid-route') return t('routeIncomplete');
   }
   return errorMessage(cause);

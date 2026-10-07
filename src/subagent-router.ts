@@ -61,7 +61,9 @@ export function registerSubagentRouter(ctx: Context, get: () => ResolvedPluginCo
     });
   };
 
-  const disposeListener = ctx.on('agent/created', (payload) => {
+  // `agent/created` dispatches SERIAL: the listener must return
+  // `Promise<undefined> | undefined`, so a `void` body fails to type-check.
+  const disposeListener = ctx.on('agent/created', async (payload) => {
     installFor(payload.agent);
   });
 

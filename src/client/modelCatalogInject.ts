@@ -42,7 +42,6 @@
  *
  * @module dsh-auxiliary/client/modelCatalogInject
  */
-import type { IApiClient } from '@deepseek-ai/dsh-client-connection/client';
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots';
 // 图标改用 dsh-loader 的策划集：意图命名（Edit / Add / Delete），fill 为
 // currentColor 因而自动跟随 shell 主题，且不再依赖具体的官方图标导出名。
@@ -57,6 +56,7 @@ import {
   saveModelGenerationCapability,
   saveModelImageCapability,
   saveModelThinkingConfig,
+  type IApiClient,
 } from './api.js';
 
 /** Marker attribute on an injected capability block (one per model row). */
@@ -1005,6 +1005,14 @@ const PENDING_WRITE_QUIET_MS = 800;
 const pendingQuietSince = new Map<string, number>();
 
 /**
+ * Retry gap while `connection.api` is still absent. The loader bridge attaches
+ * the proxy from an async inject fiber, and the settings page renders before
+ * the first mutation the observer can see; a quiet page would otherwise never
+ * re-attempt resolution.
+ */
+const API_RETRY_MS = 1000;
+
+/**
  * Write pending marks for rows that have since been saved by the page's Apply.
  * A pending mark is only applied once its model exists in the user section and
  * its injected block is gone from the DOM; the latter means the provider card
@@ -1190,11 +1198,20 @@ async function providerDirectory(api: IApiClient): Promise<ProviderDirectory> {
 }
 
 /**
+ * Lazily resolve the legacy `connection.api` proxy.
+ *
+ * On 0.2.0 the loader bridge attaches the proxy asynchronously from an ordered
+ * `ctx.inject([...])` fiber, so the caller passes an accessor rather than the
+ * proxy value: a snapshot taken at apply time can be `undefined` forever.
+ */
+export type ApiAccessor = () => IApiClient;
+
+/**
  * Start watching the settings page and keeping the injected checkboxes fresh.
  * Returns a disposer that stops the observer and removes nothing else.
  */
 export function startModelCatalogInjection(
-  api: IApiClient,
+  api: ApiAccessor,
   t: TranslateNS<'dsh-auxiliary'>,
   /**
    * dsh-loader 的 DOM-settled 订阅原语。
@@ -1217,10 +1234,31 @@ export function startModelCatalogInjection(
   let refreshTimer: number | undefined;
   let disposed = false;
 
+  // The bridge is attached before `dshLoaderUi` is provided (which gates this
+  // plugin's activation), so an absent face means the bridge has not settled
+  // yet. Retry the whole first read instead of giving up: the sweep alone would
+  // stay blocked on the never-loaded entry list.
+  let apiRetryTimer: number | undefined;
+  const resolveApi = (): IApiClient | undefined => {
+    try {
+      return api();
+    } catch {
+      if (apiRetryTimer === undefined && !disposed) {
+        apiRetryTimer = window.setTimeout(() => {
+          apiRetryTimer = undefined;
+          if (!disposed) refreshEntries();
+        }, API_RETRY_MS);
+      }
+      return undefined;
+    }
+  };
+
   const run = async (): Promise<void> => {
     if (disposed) return;
+    const client = resolveApi();
+    if (client === undefined) return;
     // Rows saved since the last sweep get their pending marks written first.
-    const applied = await applyPendingMarks(api, entries, pending, () => {
+    const applied = await applyPendingMarks(client, entries, pending, () => {
       // A pending mark entered/inside its quiet window: no DOM change will
       // re-trigger a sweep, so arm a timer past the window ourselves.
       window.setTimeout(() => {
@@ -1231,7 +1269,7 @@ export function startModelCatalogInjection(
     // Do not inject rows from an unloaded (empty) entry list: the fresh-block
     // check would keep those placeholder blocks even after the data loads.
     if (!entriesLoaded) return;
-    sweep(api, t, entries, catalogKeys, directory, pending);
+    sweep(client, t, entries, catalogKeys, directory, pending);
     // The writes may have changed the document; let the debounced re-read
     // refresh entries so the next sweep rebuilds those rows as saved.
     if (applied) schedule();
@@ -1256,7 +1294,9 @@ export function startModelCatalogInjection(
     refreshTimer = window.setTimeout(() => {
       refreshTimer = undefined;
       if (disposed) return;
-      void Promise.all([piAiModelState(api), providerDirectory(api)]).then(([state, providers]) => {
+      const client = resolveApi();
+      if (client === undefined) return;
+      void Promise.all([piAiModelState(client), providerDirectory(client)]).then(([state, providers]) => {
         if (disposed) return;
         const directoryChanged = state.entries.length !== entries.length
           || state.catalogKeys.size !== catalogKeys.size
@@ -1293,7 +1333,9 @@ export function startModelCatalogInjection(
   let entriesLoaded = false;
 
   const refreshEntries = (): void => {
-    void Promise.all([piAiModelState(api), providerDirectory(api)]).then(([state, providers]) => {
+    const client = resolveApi();
+    if (client === undefined) return;
+    void Promise.all([piAiModelState(client), providerDirectory(client)]).then(([state, providers]) => {
       if (disposed) return;
       entries = state.entries;
       catalogKeys = state.catalogKeys;
@@ -1333,6 +1375,7 @@ export function startModelCatalogInjection(
   return () => {
     disposed = true;
     if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
+    if (apiRetryTimer !== undefined) window.clearTimeout(apiRetryTimer);
     stopObserving();
     document.removeEventListener('input', onIdentityInput, true);
   };

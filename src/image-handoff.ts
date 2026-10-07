@@ -31,35 +31,36 @@ function imageReference(attachment: ImageAttachmentRef): string {
 }
 
 /**
- * Rewrite one content block. Image blocks become text references; tool-result
- * blocks are recursed so an image nested inside a tool result (exactly how the
- * core `read_image` tool renders its output) is rewritten too. The adapter
- * image walk (`contentHasImage`) recurses into tool-result content, so a
- * top-level-only rewrite would leave a nested image visible to text-only
- * adapters — the failure this recursion exists to prevent.
+ * Rewrite one top-level content block. Image blocks become text references so a
+ * text-only main model still receives the durable `[image: {...}]` JSON
+ * reference it can hand to `describe_image` — the core's own projection would
+ * instead replace the image with generic placeholder text. Every other block
+ * type passes through untouched.
+ *
+ * There is no recursion: 0.2.0 has no `tool-result` content block. A tool result
+ * is the `tool` ROLE, whose `content` is a flat block array like every other
+ * message, and {@link rewriteImages} scans each message's `content` flatly.
  */
 function rewriteBlock(block: ContentBlock): { block: ContentBlock; changed: boolean } {
   if (block.type === 'image') {
     return { block: { type: 'text', text: imageReference(block.attachment) }, changed: true };
   }
-  if (block.type === 'tool-result') {
-    let changed = false;
-    const content = block.content.map((child) => {
-      const result = rewriteBlock(child);
-      if (result.changed) changed = true;
-      return result.block;
-    });
-    if (changed) return { block: { ...block, content }, changed: true };
-  }
   return { block, changed: false };
 }
 
-/** Rewrite image blocks into text references; returns a fresh request when changed. */
+/**
+ * Rewrite image blocks into text references; returns a fresh request when changed.
+ *
+ * The walk is flat across EVERY message role (user, tool, developer, assistant),
+ * matching the core's own detection: `contentHasImage(content)` is a flat
+ * `content.some(block => block.type === 'image')` and `projectImagesForTextModel`
+ * maps over every message's `content`, not just user ones. Restricting the walk
+ * to `role === 'user'` would leave an image inside a tool-role message visible to
+ * a text-only adapter — exactly the failure this seam exists to prevent.
+ */
 function rewriteImages(options: GenerateOptions): GenerateOptions | undefined {
   let changed = false;
   const messages = options.messages.map((message) => {
-    // Tool-result messages share the user role; both carry image blocks.
-    if (message.role !== 'user') return message;
     const content = message.content;
     if (!Array.isArray(content)) return message;
     let contentChanged = false;

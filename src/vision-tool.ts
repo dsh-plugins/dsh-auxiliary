@@ -20,7 +20,7 @@ import type {} from '@deepseek-ai/dsh-tools';
 import type {} from '@deepseek-ai/dsh-agent';
 import type { ImageMediaType, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment';
 import { deepFreeze, dsh, llm } from './dsh.js';
-import { PLUGIN_NAME, type ResolvedPluginConfig } from './config.js';
+import type { ResolvedPluginConfig } from './config.js';
 
 /**
  * `ToolArgsError` 的构造入口。
@@ -151,7 +151,7 @@ async function askVision(
         { type: 'image', attachment },
         { type: 'text', text: question }
       ],
-      source: { kind: 'plugin', plugin: PLUGIN_NAME }
+      source: { kind: 'dsh-auxiliary' }
     })
   ];
   const timeout = dsh().timeout.deadline(signal, get().tool.timeoutMs, VISION_TOOL_TIMEOUT_CODE);

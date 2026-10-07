@@ -25,7 +25,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment';
 import { dsh, llm } from './dsh.js';
-import { PLUGIN_ID, PLUGIN_NAME, type ResolvedPluginConfig } from './config.js';
+import { PLUGIN_ID, type ResolvedPluginConfig } from './config.js';
 
 /**
  * The llm-pi-ai settings namespace that owns the provider routes.
@@ -37,6 +37,44 @@ import { PLUGIN_ID, PLUGIN_NAME, type ResolvedPluginConfig } from './config.js';
  * cast is exactly equivalent.
  */
 const LLM_PI_AI_NS = 'llm-pi-ai' as unknown as SettingsNamespace;
+
+/** The provider profile fields this tool reads: the route's endpoint and credential reference. */
+interface ProviderProfile {
+  readonly baseURL?: string;
+  readonly apiKeyEnv?: string;
+}
+
+/**
+ * Read one provider route's live profile out of the `llm-pi-ai` settings section.
+ *
+ * 0.2.0 removed `SettingsForms.get`, so the route profile is read the way shipped
+ * host code does it (`dsh-api-session-controller`'s `hasProviderApiKey`): take the
+ * namespace descriptor from `ctx.settings.describe({ redactSecrets: true })` and
+ * walk the configurable-provider directory's `settingsPath`.
+ *
+ * Redaction is safe here: `apiKeyEnv` is declared `role('credential-ref')` (a
+ * reference to a credential, not the secret itself), so it is not stripped the
+ * way a `role('secret')` field would be. The referenced value is still resolved
+ * through the harness credential seam by the caller, never from `process.env`.
+ *
+ * @param ctx - plugin context with the `settings` and `llm` services.
+ * @param provider - the provider route key to look up.
+ * @returns the route's `{ baseURL, apiKeyEnv }`, or undefined when the route or
+ *   its settings namespace is absent.
+ */
+function providerProfile(ctx: Context, provider: string): ProviderProfile | undefined {
+  const directory = ctx.llm.listConfigurableProviders().find((entry) => entry.provider === provider);
+  // Prefer the directory's own path (it is the authoritative profile location);
+  // fall back to the well-known shape for a route with no directory entry.
+  const ns = directory?.settingsNs ?? LLM_PI_AI_NS;
+  const path = directory?.settingsPath ?? ['providers', provider];
+  const namespaces = ctx.settings.describe({ redactSecrets: true });
+  let profile: unknown = namespaces.find((descriptor) => descriptor.ns === ns)?.value;
+  for (const key of path) {
+    profile = profile !== null && typeof profile === 'object' ? Reflect.get(profile, key) : undefined;
+  }
+  return profile !== null && typeof profile === 'object' ? profile as ProviderProfile : undefined;
+}
 
 /** Default generated-image side; the OpenAI images API accepts this. */
 const DEFAULT_SIZE = '1024x1024';
@@ -157,9 +195,7 @@ export function registerImagegenTool(ctx: Context, get: () => ResolvedPluginConf
           'generate_image: the auxiliary image-generation model is not configured — enable it under Settings → Auxiliary Models → Image-generation model and pick a model marked for image generation',
         );
       }
-      const namespace = ctx.settings.get(LLM_PI_AI_NS) as
-        { providers?: Record<string, { baseURL?: string; apiKeyEnv?: string }> } | undefined;
-      const provider = namespace?.providers?.[imagegen.provider];
+      const provider = providerProfile(ctx, imagegen.provider);
       const baseURL = provider?.baseURL;
       // apiKeyEnv is a credential reference; resolve it through the harness
       // credential seam (env / file / user-env layers), never process.env.
@@ -274,7 +310,7 @@ export function registerImagegenTool(ctx: Context, get: () => ResolvedPluginConf
           { type: 'text', text: `Generated ${paths.length} image(s):\n${paths.map((path) => `- ${path}`).join('\n')}` },
           ...images.map((ref) => ({ type: 'image' as const, attachment: ref as unknown as ImageAttachmentRef })),
         ],
-        source: { kind: 'plugin', plugin: PLUGIN_NAME },
+        source: { kind: 'dsh-auxiliary' },
       }));
       return {
         content: `Generated ${paths.length} image(s):\n${paths.map((path) => `- ${path}`).join('\n')}`,

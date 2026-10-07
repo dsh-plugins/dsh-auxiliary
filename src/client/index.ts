@@ -9,14 +9,17 @@
  * Export discipline (packages/client rule): the /client surface carries what
  * cordis loading needs plus types only — all value exports stay internal.
  */
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client';
+import type { Context as ClientContext } from '@deepseek-ai/cordis';
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client';
 // Type-only: pulls the LocaleNamespaceMap merge table.
 import type {} from '@deepseek-ai/dsh-client-ui-slots';
+// Type-only: pulls the `ctx.slots` renderer service merge.
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client';
 // Type-only: pulls the settings.section SlotMap declaration and owner props.
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client';
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots';
+import type { IApiClient } from './api.js';
 import { AuxiliarySection, type AuxiliarySectionProps } from './AuxiliarySection.js';
 import { en, zh, type AuxiliaryKey } from './locales.js';
 import { startModelCatalogInjection } from './modelCatalogInject.js';
@@ -53,8 +56,28 @@ export function apply(ctx: ClientContext): void {
 
   const connection = ctx.get('connection');
   const t = ctx.locale.bind(NS);
-  const injected = (): { api: typeof connection.api; t: TranslateNS<'dsh-auxiliary'> } => ({
-    api: connection.api,
+
+  /**
+   * Resolve the legacy `connection.api` proxy lazily.
+   *
+   * On 0.2.0 the loader bridge attaches `connection.api` from an ordered
+   * `ctx.inject([...])` fiber (`@dsh-plugin/dsh-loader`
+   * `dist/client-connection-api-compat.js:218-251`) once `ctx.remote` is up, so
+   * reading the property at apply time can capture `undefined` and bind it into
+   * the settings page forever. Every consumer therefore reads it through this
+   * accessor — after `dshLoaderUi` has been provided, which is exactly when the
+   * bridge has settled.
+   */
+  const api = (): IApiClient => {
+    const face = (connection as unknown as { api?: IApiClient }).api;
+    if (face === undefined) {
+      throw new Error('dsh-auxiliary: the client connection API is not available yet');
+    }
+    return face;
+  };
+
+  const injected = (): { api: IApiClient; t: TranslateNS<'dsh-auxiliary'> } => ({
+    api: api(),
     t,
   });
 
@@ -66,7 +89,9 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(
     // 把 loader 的 DOM-settled 原语交给注入器：它据此复用引擎那一个
     // MutationObserver + rAF 合流，不再自建（loader 缺席时自动降级）。
-    () => startModelCatalogInjection(connection.api, t, loaderUi?.onDomSettled),
+    // `api` 传访问器而非快照：注入器在 sweep/写入时才读取它，避免把
+    // apply 时刻的 undefined 固化下来。
+    () => startModelCatalogInjection(api, t, loaderUi?.onDomSettled),
     'dsh-auxiliary: model catalog capability injection',
   );
 

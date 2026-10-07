@@ -5,18 +5,84 @@
  *
  * @module dsh-auxiliary/client/api
  */
+import type { RpcResponse } from '@deepseek-ai/dsh-client-connection/client';
+import type { SettingsDescribeValue, SettingsNamespaceView } from '@deepseek-ai/dsh-settings/types';
 import type {
-  ConfigurableProviderView,
-  IApiClient,
   ModelCatalogFailure,
   ModelCatalogModel,
   ModelProviderGroup as HostModelProviderGroup,
-  RpcError,
-  RpcResponse,
-  SettingsNamespaceView,
-} from '@deepseek-ai/dsh-client-connection/client';
+} from '@deepseek-ai/dsh-api-session-controller/types';
 
-/** One configurable provider row returned by the live route directory. */
+/**
+ * One configurable provider row returned by the live route directory.
+ *
+ * 0.2.0 removed this view from `@deepseek-ai/dsh-client-connection/client`, so
+ * the plugin declares the exact shape it consumes. dsh-loader 1.3.5 still
+ * synthesises the legacy `connection.api` face from `ctx.remote`
+ * (`dist/client-connection-api-compat.js`), joining the registered route list
+ * with the declared configurable-provider directory into these rows.
+ */
+export interface ConfigurableProviderView {
+  /** Provider route key (`anvilcraft-ai`, `deepseek-official`, …). */
+  provider: string;
+  /** Human-readable provider name. */
+  displayName: string;
+  /** Settings namespace owning this route's editable configuration (`llm-pi-ai`, …). */
+  settingsNs: string;
+  /** Path inside that namespace; empty when the route owns the section root. */
+  settingsPath: readonly string[];
+  /** Whether the route is currently registered and requestable. */
+  active: boolean;
+  /** Whether a configurable-provider registration declared this route. */
+  declared?: boolean;
+}
+
+/** Value carried by the legacy `llm.providers` response. */
+export interface LlmProvidersValue {
+  providers: readonly ConfigurableProviderView[];
+}
+
+/** Value carried by the legacy `llm.models` response (the session model catalog). */
+export interface LlmModelsValue {
+  groups: readonly HostModelProviderGroup[];
+  failures: readonly ModelCatalogFailure[];
+}
+
+/** One legacy `settings.update` request: a patch write with an optional CAS revision. */
+export interface SettingsUpdateRequest {
+  /** Namespace key (`llm-pi-ai`, `dsh-auxiliary`, …). */
+  ns: string;
+  /** Partial user-section patch the Host deep-merges into the stored section. */
+  patch?: Record<string, unknown>;
+  /** Revision the caller read; the Host refuses a stale write. */
+  expectedRevision?: number;
+}
+
+/**
+ * The legacy `connection.api` proxy this plugin calls.
+ *
+ * 0.2.0 no longer exports an `IApiClient` equivalent; dsh-loader 1.3.5 still
+ * attaches the 0.1.x face asynchronously from `ctx.remote`
+ * (`dist/client-connection-api-compat.js:84-161`), producing
+ * `{ result: { ok, value | error } }` envelopes. The plugin therefore declares
+ * exactly the four calls it makes instead of restating the whole Host surface.
+ */
+export interface IApiClient {
+  llm: {
+    /** Live provider directory (registered routes + declared configurable providers). */
+    providers(request: Record<string, unknown>): Promise<RpcResponse<LlmProvidersValue>>;
+    /** Session model catalog: successful provider groups plus lookup failures. */
+    models(request: Record<string, unknown>): Promise<RpcResponse<LlmModelsValue>>;
+  };
+  settings: {
+    /** Every profile plugin entry with its redacted value and revision. */
+    describe(request: Record<string, unknown>): Promise<RpcResponse<SettingsDescribeValue>>;
+    /** Patch one entry's user section; resolves to the new namespace view. */
+    update(request: SettingsUpdateRequest): Promise<RpcResponse<SettingsNamespaceView>>;
+  };
+}
+
+/** One provider option row retained from the live route directory. */
 export interface ProviderOption {
   /** Provider route key (`anvilcraft-ai`, `deepseek-official`, …). */
   id: string;
@@ -114,15 +180,35 @@ export interface AuxFeatureDraft extends AuxRoute {
 /** Additional local validation code used before an RPC write. */
 type LocalAuxiliaryErrorCode = 'invalid-route' | 'image-capability-unavailable';
 
+/**
+ * Settings-conflict codes this plugin recognises.
+ *
+ * 0.1.x carried the hyphenated `settings-conflict`; 0.2.0's Remote taxonomy
+ * names the same refusal `settings/conflict`
+ * (`RemoteErrorDetailsMap` in `@deepseek-ai/dsh-typert-protocol`). Both are
+ * accepted so a Host on either wire generation still maps to the localized
+ * "settings changed elsewhere" message.
+ */
+const SETTINGS_CONFLICT_CODES: readonly string[] = ['settings/conflict', 'settings-conflict'];
+
+/** Whether an error code denotes a stale-revision settings refusal. */
+export function isSettingsConflictCode(code: string): boolean {
+  return SETTINGS_CONFLICT_CODES.includes(code);
+}
+
 /** Structured error raised by an auxiliary API operation. */
 export class AuxiliaryApiError extends Error {
-  /** Machine-readable RPC or local validation code. */
-  readonly code: RpcError['code'] | LocalAuxiliaryErrorCode;
+  /**
+   * Machine-readable RPC or local validation code. 0.2.0 removed the typed
+   * `RpcError` union from the connection client, so this is the wire string
+   * (`settings/conflict`, `bad-request`, `transport`, …) or a local code.
+   */
+  readonly code: string;
   /** Wire details when the Host supplied them. */
   readonly details: unknown;
 
   constructor(
-    code: RpcError['code'] | LocalAuxiliaryErrorCode,
+    code: string | LocalAuxiliaryErrorCode,
     message: string,
     details?: unknown,
   ) {
@@ -813,7 +899,7 @@ export async function loadApproveHostState(): Promise<ApproveHostState> {
 
 /** Return the Host revision from a structured settings conflict, if present. */
 export function conflictRevision(error: unknown): number | undefined {
-  if (!(error instanceof AuxiliaryApiError) || error.code !== 'settings-conflict') return undefined;
+  if (!(error instanceof AuxiliaryApiError) || !isSettingsConflictCode(error.code)) return undefined;
   const details = error.details;
   if (typeof details !== 'object' || details === null || !('actual' in details)) return undefined;
   const actual = (details as { actual?: unknown }).actual;

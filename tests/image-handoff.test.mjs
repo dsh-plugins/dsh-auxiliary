@@ -100,20 +100,31 @@ test('disabled handoff restores admission and stream semantics', async () => {
   assert.strictEqual(h.calls[0], options);
 });
 
-test('text-only route rewrites top-level and nested tool-result images immutably', async () => {
+test('text-only route rewrites top-level and tool-role images immutably', async () => {
   const h = harness({ modalities: { text: ['text'] }, adapter: oneChunk });
+  // 0.2.0 has no `tool-result` content block: a tool result is the `tool` ROLE,
+  // whose `content` is a flat block array like every other message.
   const options = request('text', [
     image('top'),
-    { type: 'tool-result', toolCallId: 'call', content: [image('nested'), { type: 'text', text: 'kept' }] },
+    { type: 'text', text: 'kept' },
   ]);
+  options.messages.push({
+    role: 'tool',
+    content: [image('nested'), { type: 'text', text: 'tool-kept' }],
+    source: { kind: 'tool', callId: 'call' },
+  });
   await collect(h.ctx.llm.stream(options));
   assert.notStrictEqual(h.calls[0], options);
   const content = h.calls[0].messages[0].content;
   assert.match(content[0].text, /^\[image: /);
-  assert.equal(content[1].content[0].type, 'text');
-  assert.match(content[1].content[0].text, /"attachmentId":"nested"/);
-  assert.equal(content[1].content[1].text, 'kept');
+  assert.equal(content[1].text, 'kept');
+  // A tool-role message's image is rewritten too (the core scan is flat across roles).
+  const toolContent = h.calls[0].messages[1].content;
+  assert.equal(toolContent[0].type, 'text');
+  assert.match(toolContent[0].text, /"attachmentId":"nested"/);
+  assert.equal(toolContent[1].text, 'tool-kept');
   assert.equal(options.messages[0].content[0].type, 'image');
+  assert.equal(options.messages[1].content[0].type, 'image');
   assert.equal(Object.isFrozen(h.calls[0]), true);
 });
 

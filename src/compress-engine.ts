@@ -17,16 +17,28 @@ import type { CompactionResult, CompactionTrigger } from '@deepseek-ai/dsh-compa
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import type { ContentBlock, Message, TokenUsage, ToolSchema } from '@deepseek-ai/dsh-llm';
 import { dsh, llm } from './dsh.js';
-import { PLUGIN_NAME } from './config.js';
 import { compactRoute } from './compact-router.js';
 import type { ResolvedEngineConfig, ResolvedPluginConfig } from './config.js';
 
-/** Structural mirror of the base hook's input type. */
+/** Structural mirror of the base hook's input type.
+ *
+ * 0.2.0's `SummarizationInput` has no `system` field: the system head is now the
+ * leading `Message` inside `messages`, so a mirror carrying `system` would lie
+ * about a field that is always undefined at runtime.
+ */
 interface CompressInput {
-  readonly system?: string;
   readonly tools?: readonly ToolSchema[];
   readonly messages: readonly Message[];
 }
+
+/**
+ * Pressure headroom beyond the routed output reservation.
+ *
+ * `ResolvedConfig.headroomTokens` is required as of 0.2.0; this mirrors
+ * `dsh-compaction-basic`'s own documented default (65536) so the engine keeps
+ * the stock pressure policy.
+ */
+const DEFAULT_HEADROOM_TOKENS = 65536;
 
 /** Structural mirror of the base hook's result type. */
 type CompressResult = {
@@ -120,6 +132,7 @@ function compressEngineClass(): NonNullable<typeof CompressEngineClass> {
       const engine = this.getEngineConfig();
       const next: ResolvedConfig = {
         thresholdRatio: engine.thresholdRatio,
+        headroomTokens: DEFAULT_HEADROOM_TOKENS,
         retainRatio: engine.retainRatio,
         maxTokens: engine.maxTokens,
         compactionRetries: engine.compactionRetries,
@@ -151,7 +164,7 @@ function compressEngineClass(): NonNullable<typeof CompressEngineClass> {
         ...input.messages,
         llm().createUserMessage({
           content: [{ type: 'text', text: this.compressPrompt }],
-          source: { kind: 'plugin', plugin: PLUGIN_NAME }
+          source: { kind: 'dsh-auxiliary' }
         })
       ];
       const assembler = new (dsh().llm.BlockAssembler)();
@@ -159,7 +172,6 @@ function compressEngineClass(): NonNullable<typeof CompressEngineClass> {
         provider: route.provider,
         model: route.model,
         messages,
-        ...(input.system !== undefined ? { system: input.system } : {}),
         ...(input.tools !== undefined ? { tools: [...input.tools] } : {}),
         maxTokens: this.config.maxTokens,
         sessionId: agent.session.id,

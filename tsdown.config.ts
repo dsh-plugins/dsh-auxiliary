@@ -13,16 +13,11 @@ import { defineConfig } from 'tsdown';
 const PLATFORM_MODULES = [
   'react', 'react/jsx-runtime', 'react-dom', 'react-dom/client', '@deepseek-ai/cordis',
   '@deepseek-ai/dsh-client-ui-slots',
-  '@deepseek-ai/dsh-client-web-react',
-  // ui-primitives 不再直接引用：Menu 改经 dsh-loader 的 DshMenu 包装层
-  // （loader 自己声明对该种子的依赖并单点导入）。
-  '@deepseek-ai/dsh-client-schema-form',
 ] as const;
 
 /** Externals resolved from the loader module table (platform seeds + the documented runtime exemption). */
 const CLIENT_EXTERNALS: readonly string[] = [
   ...PLATFORM_MODULES,
-  '@deepseek-ai/dsh-client-runtime/client',
   // dsh-loader 的 UI 套件（基础控件 + 策划图标）。必须是 external：它的产物是被
   // `window.__ModuleLoader__.load({ factory })` 包裹的 CJS 闭包，静态分析看不到任何
   // export，一旦被当成可内联依赖，rolldown 会报 MISSING_EXPORT。运行时由 DSH 客户端

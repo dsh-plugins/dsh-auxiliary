@@ -67,7 +67,39 @@ export interface DshSymbols {
 /** dshloader 的 `llm` 门面里本插件用到的部分。 */
 export interface LlmHelpers {
   createUserMessage: typeof DshLlm.createUserMessage;
-  deepFreeze: typeof DshLlm.deepFreeze;
+}
+
+/**
+ * 本插件自有的消息来源。
+ *
+ * 0.2.0 的 `MessageSourceMap` 只有 `user | model | tool | system-prompt`（无
+ * `plugin`），且没有随包发布的扩展。dsh 的约定是每个生产者自行声明自己的
+ * `kind`（`dsh-tools` 的 `tool-registry`、`dsh-user-approval` 的 `user-approval`
+ * 都这么做）。这里同样用模块增强声明一个具名的 `dsh-auxiliary` 来源：消息仍是
+ * `createUserMessage` 造出的 user-role 消息（插件消息就是 user-role），但归属
+ * 保持真实，而不是伪装成用户消息。
+ */
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    'dsh-auxiliary': {
+      kind: 'dsh-auxiliary';
+    };
+  }
+}
+
+/**
+ * loader 的 volatile 配置刷新信号。
+ *
+ * 真实签名来自 `@deepseek-ai/cordis-plugin-loader` 的 `Events` 增强，但该包不是
+ * 本插件的编译期依赖（它的 `dshLoader` 服务是运行期经 cordis 注入的），其类型
+ * 因此不在可达的编译图里。这里按上游原样声明同一个事件，让 `ctx.on(...)` 有类型
+ * 而不是被迫 `as never` 断言。重复声明是声明合并，若上游类型可见则二者一致。
+ */
+declare module '@deepseek-ai/cordis' {
+  interface Events {
+    /** volatile 配置值已提交进运行中的 fiber，未重挂载；只派发给拥有它的 fiber。 */
+    'loader/volatile-update'(paths: readonly (readonly string[])[]): void;
+  }
 }
 
 /** `ctx.dshLoader` 中本插件依赖的两个门面。 */
@@ -125,22 +157,40 @@ export const MAX_TIMER_DELAY_MS = 2147483647;
 /**
  * 递归冻结。
  *
- * `resolvePluginConfig` 是导出的纯函数（既作为 `installSection` 的 `validate`，
- * 也被测试直接调用），可能在门面注入之前运行，因此这里自带实现：门面可用时用
- * dsh 自己的 `deepFreeze`（冻结语义与运行时一致），否则退回本地递归冻结。
+ * **总是**使用本地实现，不再经 loader 门面转发：0.2.0 的 `@deepseek-ai/dsh-llm`
+ * 不再导出 `deepFreeze`，loader 的 `llm` 门面因此静默退回**浅** `Object.freeze`
+ * ——对本插件的 image-handoff / title-router / compact-router / approve-router 与
+ * `resolvePluginConfig` 而言是真实的行为退化。`deepFreeze` 是平台无关的纯工具
+ * 函数，不涉及任何 dsh 内部面，就地实现是等价且更可靠的。
+ *
+ * `resolvePluginConfig` 是导出的纯函数（也被测试直接调用），可能在门面注入之前
+ * 运行；本地实现同时覆盖了这种情况。
  */
 export function deepFreeze<T>(value: T): T {
-  if (facade !== undefined) return facade.llm.deepFreeze(value);
   return localDeepFreeze(value);
 }
 
-/** 本地递归冻结：对象与数组逐层 Object.freeze，其余原样返回。 */
+/**
+ * 本地递归冻结。
+ *
+ * 语义对齐 dsh 自己的 `@deepseek-ai/dsh-util-values` 实现（0.2.0 的
+ * `deepFreeze` 真正所在），而不是简单逐层 `Object.freeze`：
+ *
+ *   - **跳过 `AbortSignal`**：本插件冻结的请求选项对象里带着活的 `signal`
+ *     （image-handoff / title-router / compact-router / approve-router 都是
+ *     `{ ...options }`）。冻结一个 `AbortSignal` 会破坏其内部状态，是真实缺陷；
+ *   - **用 seen 集合防环**：`options` 图可能自引用，无防护会栈溢出。
+ */
 function localDeepFreeze<T>(value: T): T {
-  if (value === null || typeof value !== 'object') return value;
-  if (Object.isFrozen(value)) return value;
-  Object.freeze(value);
-  for (const key of Object.keys(value as Record<string, unknown>)) {
-    localDeepFreeze((value as Record<string, unknown>)[key]);
-  }
+  const seen = new WeakSet<object>();
+  const visit = (node: unknown): void => {
+    if (node === null || typeof node !== 'object') return;
+    if (node instanceof AbortSignal) return;
+    if (seen.has(node)) return;
+    seen.add(node);
+    Object.freeze(node);
+    for (const key of Object.keys(node)) visit((node as Record<string, unknown>)[key]);
+  };
+  visit(value);
   return value;
 }

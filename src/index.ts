@@ -9,7 +9,6 @@
  * @module dsh-auxiliary
  */
 import type { Context } from '@deepseek-ai/cordis';
-import type { SettingsNamespace } from '@deepseek-ai/dsh-settings';
 import { Config, PLUGIN_ID, PLUGIN_NAME, resolvePluginConfig, type PluginConfig, type ResolvedPluginConfig } from './config.js';
 import { registerVisionTool } from './vision-tool.js';
 import { registerImageHandoff } from './image-handoff.js';
@@ -20,24 +19,6 @@ import { installCompactRouter } from './compact-router.js';
 import { CompressEngine, installCompressionEngine } from './compress-engine.js';
 import { registerImagegenTool } from './imagegen-tool.js';
 import { clearDshFacade, setDshFacade, type DshFacade } from './dsh.js';
-
-/**
- * `ctx.dshLoader` 中本插件用到的部分。
- *
- * 在 {@link DshFacade}（模块级 dsh 符号）之外还要 `settings` 门面：
- * `installSettingsSection` 承载真实上游语义，由 loader 转发而非本插件重实现。
- */
-interface DshLoaderApi extends DshFacade {
-  settings: {
-    installSection<T>(
-      ctx: unknown,
-      ns: unknown,
-      schema: unknown,
-      entry: T,
-      hooks: { setSource(current: () => T): void; onChange(): void; validate(value: T): void },
-    ): boolean;
-  };
-}
 
 export { Config, PLUGIN_NAME, resolvePluginConfig } from './config.js';
 export { registerVisionTool, type VisionToolOptions } from './vision-tool.js';
@@ -52,21 +33,24 @@ export { registerImagegenTool } from './imagegen-tool.js';
 /** Cordis plugin name used by loader diagnostics. */
 export const name = PLUGIN_NAME;
 
-/** Services required by `inspect_image`, compaction routing, and compression. */
+/** Services required by `inspect_image`, compaction routing, and compression.
+ *
+ * `settings` stays required: `imagegen-tool.ts` reads the `llm-pi-ai` route
+ * profile through `ctx.settings.describe(...)`, and a service read on the plugin
+ * context without a matching `inject` entry throws
+ * `cannot get property "settings" without inject`.
+ */
 export const inject = ['dshLoader', 'llm', 'tools', 'systemPrompt', 'attachments', 'fs', 'settings', 'credentials'];
 
 /**
- * User-settings namespace owning the whole plugin section. Deliberately the
- * short `PLUGIN_ID`, not the scoped `PLUGIN_NAME`: the namespace pattern only
- * accepts `[a-z0-9-]`, and keeping the old value preserves already-saved user
- * settings across the package rename.
+ * User-settings namespace owning the whole plugin section.
  *
- * A bare literal rather than `settingsNamespace(PLUGIN_ID)` because this is
- * evaluated at MODULE scope, before `apply` has injected the loader facade.
- * dsh's `settingsNamespace` is pure validation returning its argument unchanged
- * (it only brands the string at the type level), so this is equivalent.
+ * On 0.2.0 the namespace is simply the profile entry id (`dsh-auxiliary`, from
+ * this package's `cordis.patch.yml`), which is what `SettingsForms.describe()`
+ * reports as `ns` and what the "Auxiliary Models" page writes back. No
+ * registration call is involved: the entry id IS the namespace.
  */
-const NS = PLUGIN_ID as unknown as SettingsNamespace;
+const NS = PLUGIN_ID;
 
 /**
  * Dormant directory entry that exposes this plugin's settings namespace to the
@@ -81,9 +65,20 @@ export function apply(ctx: Context, config: PluginConfig): void {
   // 先接住 loader 门面：其余模块经 ./dsh.js 取用 dsh 的模块级符号
   // （defineTool / deadline / credentialRef / BasicCompactionEngine ...），
   // 因此这一步必须早于任何注册。
-  const loader = (ctx as Context & { dshLoader: DshLoaderApi }).dshLoader;
+  const loader = (ctx as Context & { dshLoader: DshFacade }).dshLoader;
   setDshFacade(loader);
   ctx.effect(() => () => clearDshFacade());
+
+  // 0.2.0 把 settings 搬进了插件自己的 Cordis Config：本插件的 `Config`（见
+  // ./config.ts，每个可编辑叶子都标了 `.volatile()`）就是设置页的数据源，profile
+  // 条目 id（`dsh-auxiliary`）就是命名空间。`configure({ auto: false })` 关掉
+  // 自动生成的页面，保留本插件自定义的 Auxiliary Models 页；它必须挂在**本插件
+  // 自己的 fiber** 上（`ctx.fiber`），并作为 effect 注册以便随卸载撤销。
+  //
+  // 不再调用 loader 的 `installSection` / settings 服务的 `register`：0.2.0 的
+  // `dsh-settings` 已移除这两个 API，而 dsh-loader 1.3.5 仍会转发到它们（这正是
+  // 用户报的 `sctx.settings.register is not a function` 崩溃帧）。
+  ctx.inject(['settings'], (child) => child.effect(() => child.settings.configure({ auto: false }, ctx.fiber)));
 
   // 在任何 reconcile 之前捕获宿主的原始 resolveModelInfo：image-handoff 启用后
   // 会包装它，给所有纯文本模型虚报图片输入能力；视觉工具的「主模型支持图片时
@@ -91,7 +86,11 @@ export function apply(ctx: Context, config: PluginConfig): void {
   // 会话里反而把它隐藏掉。
   const resolveModelInfo = ctx.llm.resolveModelInfo.bind(ctx.llm);
 
-  let current = () => config;
+  // The validated Config `apply` received IS the live source: on 0.2.0 the loader
+  // commits a volatile-only change by mutating the references inside this very
+  // object (no remount), so the thunk is constant and `resolved()` re-reads the
+  // leaves on demand.
+  const current = (): PluginConfig => config;
   let lastRaw: PluginConfig | undefined;
   let lastGood: ResolvedPluginConfig | undefined;
   const resolved = (): ResolvedPluginConfig => {
@@ -230,23 +229,31 @@ export function apply(ctx: Context, config: PluginConfig): void {
     compressionEngine = undefined;
   }, 'dsh-auxiliary: vision tool, handoff, and approval-router lifecycle');
 
-  // 经 loader 门面转发到 dsh 的 installSettingsSection（不重实现其回退语义：
-  // 以组合入口作 base 层注册、settings 服务在时把 source thunk 指向解析作用域、
-  // 服务消失时回退到入口，全程挂在 scoped fiber 上）。
-  loader.settings.installSection<PluginConfig>(ctx, NS, Config, config, {
-    setSource: (source) => {
-      current = source;
-    },
-    onChange: () => {
-      reconcileVisionTool();
-      reconcileHandoff();
-      reconcileApproveRouter();
-      reconcileImagegenTool();
-      reconcileCompressionEngine();
-    },
-    validate: resolvePluginConfig
-  });
+  // Re-reconcile whenever the loader commits a volatile-only config change into
+  // this entry's live references. `loader/volatile-update` is the canonical
+  // refresh signal (shipped `dsh-llm-pi-ai` uses exactly this). Its real
+  // declaration lives in `@deepseek-ai/cordis-plugin-loader`, which is not a
+  // compile-time dependency of this package, so `./dsh.js` declares the same
+  // event locally.
+  //
+  // The memo in `resolved()` keys on the raw config object's identity, but a
+  // volatile update mutates a reference's inner value while that identity stays
+  // stable — so this event must not rely on the memo alone. Dropping the memo
+  // forces the next `resolved()` call to re-read every reference.
+  const reconcileAll = (): void => {
+    lastRaw = undefined;
+    reconcileVisionTool();
+    reconcileHandoff();
+    reconcileApproveRouter();
+    reconcileSubagentRouter();
+    reconcileImagegenTool();
+    reconcileCompressionEngine();
+  };
+  ctx.effect(() => ctx.on('loader/volatile-update', () => reconcileAll()));
 
+  // Initial pass: the validated Config `apply` received already carries the
+  // composition entry values plus any persisted profile patch, with volatile
+  // leaves delivered as references (unwrapped by `resolvePluginConfig`).
   reconcileVisionTool();
   reconcileHandoff();
   reconcileApproveRouter();
