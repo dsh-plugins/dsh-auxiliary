@@ -304,6 +304,7 @@ harness 的 LLM 抽象只处理文本，因此生图直接对话提供商的 **O
 
 ## 说明
 
+- **要求 DeepSeek Harness `0.2.0-rc.1` 或更新版本。** DSH 0.2.0 把插件设置搬进了 profile 里插件自己的 Cordis Config，本插件已改用该契约：可编辑字段声明为 `.volatile()`，按 profile 持久化在 `cordis.patch.yml` 的条目 `config` 下；设置页经 `ctx.settings.configure({ auto: false })` 注册。0.2.0 之前的版本暴露的 settings `register` / `installSettingsSection` API 已不存在——旧宿主会按 peer 范围在启动时拒绝本插件，而本插件也不再调用这些已被移除的 API。
 - 各路由功能只改路由自己那一类调用（`purpose: 'compaction'` / `purpose: 'session-title'` / 审批审查契约），主会话路由永不被触碰。
 - `engine.enabled: true` 会**替换**默认压缩后端；请勿同时加载 `@deepseek-ai/dsh-compaction-basic`。插件检测到冲突会跳过引擎并告警。
 - 视觉工具参数：`path`（绝对路径或工作区相对路径）与可选的 `question`。支持格式：PNG、JPEG、WebP、GIF。

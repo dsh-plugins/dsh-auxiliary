@@ -346,6 +346,14 @@ Apply closes, so they never race the page's revision checks.
 
 ## Notes
 
+- **Requires DeepSeek Harness `0.2.0-rc.1` or newer.** DSH 0.2.0 moved plugin
+  settings into the profile plugin Config, which is the contract this plugin now
+  uses: its editable fields are declared `.volatile()` and persist per profile in
+  `cordis.patch.yml` under the entry id, and the settings page is registered with
+  `ctx.settings.configure({ auto: false })`. Versions before 0.2.0 exposed a
+  settings `register`/`installSettingsSection` API that no longer exists — an
+  older host will refuse this plugin at startup on its peer range, and this
+  plugin no longer carries the removed calls.
 - Routing features reroute only their own call category (`purpose:
   'compaction'` / `purpose: 'session-title'` / the approval review contract);
   the main session route is never touched.
