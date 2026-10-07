@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "skills": {
+    "dsh-benchmark-case": {
+      "source": "oh-my-dsh/dsh-plugin-upgrade-skill",
+      "sourceType": "github",
+      "skillPath": "skills/dsh-benchmark-case/SKILL.md",
+      "computedHash": "8730d708239d10d92102fe40ef674980e639b49bf822ba66b38b4a69e102832e"
+    },
+    "dsh-upgrade-audit": {
+      "source": "oh-my-dsh/dsh-plugin-upgrade-skill",
+      "sourceType": "github",
+      "skillPath": "skills/dsh-upgrade-audit/SKILL.md",
+      "computedHash": "32e94bbecc81a3f190e795814f7eefbfb8bc1f34a8b391448afd15c7d96e3b97"
+    },
+    "generic-migration": {
+      "source": "oh-my-dsh/dsh-plugin-upgrade-skill",
+      "sourceType": "github",
+      "skillPath": "skills/generic-migration/SKILL.md",
+      "computedHash": "65695f98b5f8207436f88328d8246b029766afffd788981028ebb5b7cf8a3754"
+    },
+    "plugin-fleet-sweep": {
+      "source": "oh-my-dsh/dsh-plugin-upgrade-skill",
+      "sourceType": "github",
+      "skillPath": "skills/plugin-fleet-sweep/SKILL.md",
+      "computedHash": "033bceb4650143ac3e1f6a633fbdddf20b73d269c521b71406fc26168570e69c"
+    },
+    "plugin-heavy-dep": {
+      "source": "oh-my-dsh/dsh-plugin-upgrade-skill",
+      "sourceType": "github",
+      "skillPath": "skills/plugin-heavy-dep/SKILL.md",
+      "computedHash": "5f65844b12d4b5fe50b18051f12fb64222d671e7fd5b7aafec22c0f56891acf3"
+    },
+    "plugin-release": {
+      "source": "oh-my-dsh/dsh-plugin-upgrade-skill",
+      "sourceType": "github",
+      "skillPath": "skills/plugin-release/SKILL.md",
+      "computedHash": "aaf77c0569a76ed4fa89702ce29b8752ab799080af99d103fdffc0118a4082b5"
+    },
+    "plugin-runtime-debug": {
+      "source": "oh-my-dsh/dsh-plugin-upgrade-skill",
+      "sourceType": "github",
+      "skillPath": "skills/plugin-runtime-debug/SKILL.md",
+      "computedHash": "4c671d3c36e7733f5214d7d7fecd92e38beb7254b712618358f56b57b052643a"
+    },
+    "plugin-test": {
+      "source": "oh-my-dsh/dsh-plugin-upgrade-skill",
+      "sourceType": "github",
+      "skillPath": "skills/plugin-test/SKILL.md",
+      "computedHash": "b4912120d44474d53fa3f89fb021c6261350355f12b815973ad2da9d1b078327"
+    },
+    "plugin-upgrade": {
+      "source": "oh-my-dsh/dsh-plugin-upgrade-skill",
+      "sourceType": "github",
+      "skillPath": "skills/plugin-upgrade/SKILL.md",
+      "computedHash": "43996d6a0f5ed19afe199e0f49660da16fa2a8d590086969e00a081b09aea412"
+    },
+    "plugin-workflow": {
+      "source": "oh-my-dsh/dsh-plugin-upgrade-skill",
+      "sourceType": "github",
+      "skillPath": "skills/plugin-workflow/SKILL.md",
+      "computedHash": "28d01df24b1e34d40d6c2e205af5b5ddf13118ccae5f757ff730ef214796255f"
+    },
+    "plugin-write": {
+      "source": "oh-my-dsh/dsh-plugin-upgrade-skill",
+      "sourceType": "github",
+      "skillPath": "skills/plugin-write/SKILL.md",
+      "computedHash": "7d73ff52640f1e2917b66d9ffa19e5066422e8329c2f2f013e8a0cfd99c1876e"
+    }
+  }
+}
