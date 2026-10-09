@@ -40,7 +40,7 @@
  * "capacities" disclosure, so the checkboxes are visible whether or not the
  * row is expanded.
  *
- * @module dsh-auxiliary/client/modelCatalogInject
+ * @module dsh-auxiliary-neo/client/modelCatalogInject
  */
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots';
 // 图标改用 dsh-loader 的策划集：意图命名（Edit / Add / Delete），fill 为
@@ -221,7 +221,7 @@ function rowKey(provider: string, model: string): string {
  */
 function buildCheckbox(
   api: IApiClient,
-  t: TranslateNS<'dsh-auxiliary'>,
+  t: TranslateNS<'dsh-auxiliary-neo'>,
   provider: string,
   model: string,
   spec: CapabilitySpec,
@@ -376,7 +376,7 @@ function createIconHost(): HTMLSpanElement {
 
 /** Default thinking-level dropdown mounted through the platform Menu primitive. */
 function buildThinkingDropdown(
-  t: TranslateNS<'dsh-auxiliary'>,
+  t: TranslateNS<'dsh-auxiliary-neo'>,
   disabled: boolean,
   onChange: (value: string | null) => void,
 ): { element: HTMLElement; update: (levels: readonly string[], value: string | null) => void } {
@@ -419,7 +419,7 @@ interface ThinkingEditorState {
 
 /** Build the thinking-level editor appended to the model-row capability block. */
 function buildThinkingSection(
-  t: TranslateNS<'dsh-auxiliary'>,
+  t: TranslateNS<'dsh-auxiliary-neo'>,
   provider: string,
   model: string,
   pending: PendingMap,
@@ -681,7 +681,7 @@ function buildThinkingSection(
 
 /** Open the free-text bulk editor for thinking levels. */
 function openThinkingBulkPopup(
-  t: TranslateNS<'dsh-auxiliary'>,
+  t: TranslateNS<'dsh-auxiliary-neo'>,
   initial: string,
   onConfirm: (levels: readonly string[]) => void,
 ): void {
@@ -800,7 +800,7 @@ function openThinkingBulkPopup(
 /** Build the always-visible capability block for one model row. */
 function buildCapabilityBlock(
   api: IApiClient,
-  t: TranslateNS<'dsh-auxiliary'>,
+  t: TranslateNS<'dsh-auxiliary-neo'>,
   provider: string,
   model: string,
   draft: boolean,
@@ -823,7 +823,7 @@ function buildCapabilityBlock(
 }
 
 /** Build the plain-text notice shown on rows that cannot carry the marks yet. */
-function buildNotice(t: TranslateNS<'dsh-auxiliary'>, key: 'imageCapabilityUnsupported' | 'imageCapabilitySaveFirst'): HTMLElement {
+function buildNotice(t: TranslateNS<'dsh-auxiliary-neo'>, key: 'imageCapabilityUnsupported' | 'imageCapabilitySaveFirst'): HTMLElement {
   const notice = document.createElement('div');
   notice.setAttribute(MARK_NOTICE, '');
   notice.style.color = 'var(--dsw-alias-label-tertiary)';
@@ -880,7 +880,7 @@ function inheritRowFlags(previous: PiAiModelRow, pending: PendingMap, key: strin
  */
 function injectRow(
   api: IApiClient,
-  t: TranslateNS<'dsh-auxiliary'>,
+  t: TranslateNS<'dsh-auxiliary-neo'>,
   input: Element,
   provider: string,
   model: string,
@@ -922,7 +922,7 @@ function injectRow(
 /** Inject the "cannot be marked yet" notice into one row, replacing any stale block. */
 function injectNotice(
   input: Element,
-  t: TranslateNS<'dsh-auxiliary'>,
+  t: TranslateNS<'dsh-auxiliary-neo'>,
   key: 'imageCapabilityUnsupported' | 'imageCapabilitySaveFirst',
 ): void {
   const entry = entryOf(input);
@@ -1079,7 +1079,7 @@ async function applyPendingMarks(
 /** One sweep over the page: mark every pi-ai row, explain every other row. */
 function sweep(
   api: IApiClient,
-  t: TranslateNS<'dsh-auxiliary'>,
+  t: TranslateNS<'dsh-auxiliary-neo'>,
   entries: ReadonlyArray<PiAiModelRow>,
   catalogKeys: ReadonlySet<string>,
   directory: ProviderDirectory,
@@ -1212,7 +1212,7 @@ export type ApiAccessor = () => IApiClient;
  */
 export function startModelCatalogInjection(
   api: ApiAccessor,
-  t: TranslateNS<'dsh-auxiliary'>,
+  t: TranslateNS<'dsh-auxiliary-neo'>,
   /**
    * dsh-loader 的 DOM-settled 订阅原语。
    *

@@ -1,9 +1,9 @@
 /**
- * Browser-side Host data access for the dsh-auxiliary settings section. All
+ * Browser-side Host data access for the dsh-auxiliary-neo settings section. All
  * reads and writes use the connection's ApiProxy (`llm.*` / `settings.*`), so
  * the settings page shares the Host's provider directory and namespace writer.
  *
- * @module dsh-auxiliary/client/api
+ * @module dsh-auxiliary-neo/client/api
  */
 import type { RpcResponse } from '@deepseek-ai/dsh-client-connection/client';
 import type { SettingsDescribeValue, SettingsNamespaceView } from '@deepseek-ai/dsh-settings/types';
@@ -50,7 +50,7 @@ export interface LlmModelsValue {
 
 /** One legacy `settings.update` request: a patch write with an optional CAS revision. */
 export interface SettingsUpdateRequest {
-  /** Namespace key (`llm-pi-ai`, `dsh-auxiliary`, …). */
+  /** Namespace key (`llm-pi-ai`, `dsh-auxiliary-neo`, …). */
   ns: string;
   /** Partial user-section patch the Host deep-merges into the stored section. */
   patch?: Record<string, unknown>;
@@ -352,7 +352,7 @@ export async function saveModelImageCapability(
   if (location === undefined || !settings.writable) {
     throw new AuxiliaryApiError(
       'image-capability-unavailable',
-      'dsh-auxiliary: the selected model does not expose an editable llm-pi-ai model row',
+      'dsh-auxiliary-neo: the selected model does not expose an editable llm-pi-ai model row',
     );
   }
   const models = location.models.map((entry, index) => index === location.modelIndex
@@ -413,7 +413,7 @@ export async function saveModelGenerationCapability(
   if (location === undefined || !settings.writable) {
     throw new AuxiliaryApiError(
       'image-capability-unavailable',
-      'dsh-auxiliary: the selected model does not expose an editable llm-pi-ai model row',
+      'dsh-auxiliary-neo: the selected model does not expose an editable llm-pi-ai model row',
     );
   }
   const models = location.models.map((entry, index) => index === location.modelIndex
@@ -550,7 +550,7 @@ export async function saveModelThinkingConfig(
   if (location === undefined || !settings.writable) {
     throw new AuxiliaryApiError(
       'bad-request',
-      'dsh-auxiliary: the selected model does not expose an editable llm-pi-ai model row',
+      'dsh-auxiliary-neo: the selected model does not expose an editable llm-pi-ai model row',
     );
   }
   const hasThinking = levels.some((level) => level !== 'off');
@@ -734,10 +734,10 @@ function snapshotOf(view: SettingsNamespaceView): AuxSettingsSnapshot {
   };
 }
 
-/** Read the dsh-auxiliary namespace from the settings descriptor. */
+/** Read the dsh-auxiliary-neo namespace from the settings descriptor. */
 export async function loadAuxSettings(api: IApiClient): Promise<AuxSettings> {
   const value = valueOf(await api.settings.describe({}));
-  const namespace: SettingsNamespaceView | undefined = value.namespaces.find((ns) => ns.ns === 'dsh-auxiliary');
+  const namespace: SettingsNamespaceView | undefined = value.namespaces.find((ns) => ns.ns === 'dsh-auxiliary-neo');
   if (namespace === undefined) {
     return {
       vision: { enabled: true },
@@ -771,7 +771,7 @@ function normalizedDraft(draft: AuxFeatureDraft): { enabled: boolean; provider: 
   if (Boolean(provider) !== Boolean(model)) {
     throw new AuxiliaryApiError(
       'invalid-route',
-      'dsh-auxiliary: provider and model must be selected together',
+      'dsh-auxiliary-neo: provider and model must be selected together',
     );
   }
   return {
@@ -788,7 +788,7 @@ async function loadRawAuxEngine(
   api: IApiClient,
 ): Promise<AuxNamespaceValue['engine']> {
   const settings = valueOf(await api.settings.describe({}));
-  const namespace = settings.namespaces.find((entry) => entry.ns === 'dsh-auxiliary');
+  const namespace = settings.namespaces.find((entry) => entry.ns === 'dsh-auxiliary-neo');
   return namespace === undefined ? undefined : namespaceValue(namespace).engine;
 }
 
@@ -868,14 +868,14 @@ export async function saveAuxFeature(
               };
             })();
   const view = valueOf(await api.settings.update({
-    ns: 'dsh-auxiliary',
+    ns: 'dsh-auxiliary-neo',
     patch,
     ...(expectedRevision !== undefined ? { expectedRevision } : {}),
   }));
   return snapshotOf(view);
 }
 
-/** Read-only host state served by the dsh-auxiliary state endpoint. */
+/** Read-only host state served by the dsh-auxiliary-neo state endpoint. */
 export interface ApproveHostState {
   /** Whether the approve-for-me plugin registered one of its review presets. */
   readonly approvePluginInstalled: boolean;
@@ -888,7 +888,7 @@ export interface ApproveHostState {
  */
 export async function loadApproveHostState(): Promise<ApproveHostState> {
   try {
-    const response = await fetch('/dsh-auxiliary/state', { headers: { accept: 'application/json' } });
+    const response = await fetch('/dsh-auxiliary-neo/state', { headers: { accept: 'application/json' } });
     if (!response.ok) return { approvePluginInstalled: false };
     const state = await response.json() as Partial<ApproveHostState>;
     return { approvePluginInstalled: state.approvePluginInstalled === true };

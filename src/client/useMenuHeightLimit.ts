@@ -5,7 +5,7 @@
  * pickers with a small option count should instead show a compact internal
  * scrollbar. Both pickers share this hook so the behavior stays consistent.
  *
- * @module dsh-auxiliary/client/useMenuHeightLimit
+ * @module dsh-auxiliary-neo/client/useMenuHeightLimit
  */
 import { useEffect } from 'react';
 

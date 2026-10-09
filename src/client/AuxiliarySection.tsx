@@ -4,7 +4,7 @@
  * Each card keeps its own draft; the parent owns the namespace snapshot,
  * revision, and serialized write queue.
  *
- * @module dsh-auxiliary/client/AuxiliarySection
+ * @module dsh-auxiliary-neo/client/AuxiliarySection
  */
 import {
   useCallback,
@@ -42,7 +42,7 @@ export interface AuxiliarySectionProps extends SettingsSectionOwnerProps {
   /** The connection's shared API client. */
   api: IApiClient;
   /** Namespace-bound translate. */
-  t: TranslateNS<'dsh-auxiliary'>;
+  t: TranslateNS<'dsh-auxiliary-neo'>;
 }
 
 const sectionStyle: CSSProperties = {
@@ -274,7 +274,7 @@ function ThresholdControl({
 }
 
 /** Translate structured save failures while preserving ordinary diagnostics. */
-function saveErrorMessage(cause: unknown, t: TranslateNS<'dsh-auxiliary'>): string {
+function saveErrorMessage(cause: unknown, t: TranslateNS<'dsh-auxiliary-neo'>): string {
   if (cause instanceof AuxiliaryApiError) {
     // 0.2.0 names the stale-revision refusal `settings/conflict`; the hyphenated
     // 0.1.x code is still accepted for a Host on the older wire.
@@ -302,7 +302,7 @@ interface FeatureCardProps {
   /** Optional restricted model list; the image-generation card passes models marked for generation. */
   groupsOverride?: ModelCatalog['groups'];
   disabled: boolean;
-  t: TranslateNS<'dsh-auxiliary'>;
+  t: TranslateNS<'dsh-auxiliary-neo'>;
   onSave: (feature: AuxFeature, draft: AuxFeatureDraft) => Promise<void>;
 }
 

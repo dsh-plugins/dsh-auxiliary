@@ -9,7 +9,7 @@
  * backend's own configuration. When no auxiliary route is configured the
  * listener is a pure pass-through.
  *
- * @module dsh-auxiliary/compact-router
+ * @module dsh-auxiliary-neo/compact-router
  */
 import type { Context } from '@deepseek-ai/cordis';
 import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm';

@@ -5,7 +5,7 @@
  * it asks a reviewer model to decide each approval prompt. By default the
  * reviewer inherits the requesting session's model route, and the plugin offers
  * its own `reviewProvider` / `reviewModel` config — but both are owned by that
- * plugin. This module lets dsh-auxiliary provide a dedicated approval model
+ * plugin. This module lets dsh-auxiliary-neo provide a dedicated approval model
  * instead: a listener on the official `llm/stream` waterfall recognizes the
  * plugin's review call and reroutes it to `approve.provider` / `approve.model`.
  *
@@ -21,7 +21,7 @@
  * audits marked requests) skips it — matching the original call, which was
  * never marked either.
  *
- * A companion read-only HTTP endpoint (`/dsh-auxiliary/state`) tells the
+ * A companion read-only HTTP endpoint (`/dsh-auxiliary-neo/state`) tells the
  * settings page whether the approve-for-me plugin is installed, so the
  * "Approval model" card can show an informative notice instead of a dead
  * configuration. Both `webServer` and `permissionPresets` are optional
@@ -29,7 +29,7 @@
  * and plugin detection degrades to "not installed" when the preset service is
  * absent.
  *
- * @module dsh-auxiliary/approve-router
+ * @module dsh-auxiliary-neo/approve-router
  */
 import type { Context } from '@deepseek-ai/cordis';
 import type { GenerateOptions } from '@deepseek-ai/dsh-llm';
@@ -137,7 +137,7 @@ export function isApprovePluginInstalled(ctx: Context): boolean {
 
 /**
  * Serve the plugin's read-only state to the settings page via the optional
- * `webServer` service. The endpoint is exact-path `/dsh-auxiliary/state` and
+ * `webServer` service. The endpoint is exact-path `/dsh-auxiliary-neo/state` and
  * returns JSON `{ approvePluginInstalled }`; without a web server (headless
  * profiles) it registers nothing. Returns a disposer.
  *
@@ -162,7 +162,7 @@ export function registerApproveStateEndpoint(ctx: Context): () => void {
     if (webServer === undefined) return;
     routeDisposer = webServer.register({
       kind: 'exact',
-      path: '/dsh-auxiliary/state',
+      path: '/dsh-auxiliary-neo/state',
       handler: (_req, res) => {
         const state: ApproveHostState = {
           approvePluginInstalled: isApprovePluginInstalled(ctx),

@@ -1,7 +1,7 @@
 /**
- * Browser-half copy dictionaries for the dsh-auxiliary settings section.
+ * Browser-half copy dictionaries for the dsh-auxiliary-neo settings section.
  * zh is the key source, en mirrors every key (bilingual balance enforced at
- * registration). @module dsh-auxiliary/client/locales
+ * registration). @module dsh-auxiliary-neo/client/locales
  */
 
 export const zh = {
@@ -155,7 +155,7 @@ export const zh = {
   routeIncomplete: '提供商和模型必须同时选择，或同时留空。',
 };
 
-/** Keys of the dsh-auxiliary surface copy. */
+/** Keys of the dsh-auxiliary-neo surface copy. */
 export type AuxiliaryKey = keyof typeof zh;
 
 export const en: Record<AuxiliaryKey, string> = {

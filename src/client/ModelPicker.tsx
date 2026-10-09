@@ -6,7 +6,7 @@
  * and the rest of DSH. The component deliberately owns no model data or
  * persistence behavior.
  *
- * @module dsh-auxiliary/client/ModelPicker
+ * @module dsh-auxiliary-neo/client/ModelPicker
  */
 import {
   useCallback,

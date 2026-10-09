@@ -2,26 +2,28 @@
 
 ![Banner](./docs/banner.png)
 
-# dsh-auxiliary
+# dsh-auxiliary-neo
+
+现已支持 DSH v0.2.0-rc.2。
 
 **DeepSeek Harness 辅助模型插件：为视觉理解、上下文压缩、审批审查、子代理、会话标题与图片生成提供独立的模型路由、工具与系统提示，全程不触碰主对话模型。**
 
 [English](README.md) | 简体中文
 
 [![DSH Plugin](https://img.shields.io/badge/DeepSeek%20Harness-plugin-4f7cff)](https://github.com/topics/dsh-plugin)
-<a href="https://github.com/dsh-plugins/dsh-auxiliary/actions/workflows/npm-publish.yml">
-  <img src="https://github.com/dsh-plugins/dsh-auxiliary/actions/workflows/npm-publish.yml/badge.svg" alt="Build Status">
+<a href="https://github.com/HappyCode-HC/dsh-auxiliary-neo/actions/workflows/npm-publish.yml">
+  <img src="https://github.com/HappyCode-HC/dsh-auxiliary-neo/actions/workflows/npm-publish.yml/badge.svg" alt="Build Status">
 </a>
-<a href="https://www.npmjs.com/package/@dsh-plugin/dsh-auxiliary">
-  <img src="https://img.shields.io/npm/v/@dsh-plugin/dsh-auxiliary.svg?sanitize=true" alt="Version">
+<a href="https://www.npmjs.com/package/dsh-auxiliary-neo">
+  <img src="https://img.shields.io/npm/v/dsh-auxiliary-neo.svg?sanitize=true" alt="Version">
 </a>
-<a href="https://www.npmjs.com/package/@dsh-plugin/dsh-auxiliary">
-  <img src="https://img.shields.io/npm/l/@dsh-plugin/dsh-auxiliary.svg?sanitize=true" alt="License">
+<a href="https://www.npmjs.com/package/dsh-auxiliary-neo">
+  <img src="https://img.shields.io/npm/l/dsh-auxiliary-neo.svg?sanitize=true" alt="License">
 </a>
 
 </div>
 
-`dsh-auxiliary` 是一个 [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) 插件，在 harness 的 LLM 抽象层（`ctx.llm`）之上叠加辅助模型能力。它从不替换主对话模型：每个功能都是独立、可选的模型路由，只在自己的那类调用上生效——把昂贵或专门的活儿（视觉、压缩摘要、审批审查、委派子代理、会话标题、图片生成）交给各自合适的模型。
+`dsh-auxiliary-neo` 是一个 [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) 插件，在 harness 的 LLM 抽象层（`ctx.llm`）之上叠加辅助模型能力。它从不替换主对话模型：每个功能都是独立、可选的模型路由，只在自己的那类调用上生效——把昂贵或专门的活儿（视觉、压缩摘要、审批审查、委派子代理、会话标题、图片生成）交给各自合适的模型。
 
 ## 功能总览
 
@@ -44,13 +46,13 @@
 复制下面的内容，粘贴给 DSH Agent（本 Web GUI 中的助手）。由 Agent 帮你完成安装与验证，无需手动执行 npm 或编辑 profile 配置：
 
 ```text
-把 @dsh-plugin/dsh-auxiliary 插件安装到我指定的 profile（如果我没说，先问我）。npm 包名为 `@dsh-plugin/dsh-auxiliary`；使用 GitHub 源 `github:dsh-plugins/dsh-auxiliary`，本地开发可用 `file:<路径>`。
+把 dsh-auxiliary-neo 插件安装到我指定的 profile（如果我没说，先问我）。npm 包名为 `dsh-auxiliary-neo`；使用 GitHub 源 `github:HappyCode-HC/dsh-auxiliary-neo`，本地开发可用 `file:<路径>`。
 
 步骤：
-1. 添加插件依赖：`dsh plugin --profile <PROFILE> add @dsh-plugin/dsh-auxiliary`（或我 profile 对应的插件管理器命令）。0.4.1 起该包是 bundle 插件（声明了 `dsh.bundle.patch`），`dsh plugin add` 会自动把它追加进 `dsh.profile.bundles`，无需再手动编辑 `cordis.patch.yml`。
+1. 添加插件依赖：`dsh plugin --profile <PROFILE> add dsh-auxiliary-neo`（或我 profile 对应的插件管理器命令）。0.4.1 起该包是 bundle 插件（声明了 `dsh.bundle.patch`），`dsh plugin add` 会自动把它追加进 `dsh.profile.bundles`，无需再手动编辑 `cordis.patch.yml`。
 2. 该包声明了 `prepack` 构建脚本。若 pnpm 报 `ERR_PNPM_IGNORED_BUILDS`，在 profile 的 `pnpm-workspace.yaml`（`allowBuilds`）中批准构建后重试。
 3. 如果该 profile 之前是通过 `cordis.patch.yml` 里的手动 insert 行加载本插件（0.4.1 之前的做法），请**删除那一行**——bundle 层现在负责挂载，两者并存会导致插件被挂载两次。
-4. 验证 `node_modules/@dsh-plugin/dsh-auxiliary` 存在已构建的 `lib/` 目录（至少 `lib/index.js` 与 `lib/client.js`）。若构建产物缺失，在插件目录运行 `npm run build` 后重新 add。
+4. 验证 `node_modules/dsh-auxiliary-neo` 存在已构建的 `lib/` 目录（至少 `lib/index.js` 与 `lib/client.js`）。若构建产物缺失，在插件目录运行 `npm run build` 后重新 add。
 5. 不要启动 profile——只安装并验证，然后报告你改动了什么。
 ```
 
@@ -131,7 +133,7 @@ approve:
 
 路由仅在功能开启且路由完整时激活；未安装该插件时不存在审查调用，监听器自然闲置。生效前提：approve-for-me 处于 `mode: review` 且会话选中 `approve-for-me` 或 `strict-review` 权限预设。建议选择便宜快速的模型。
 
-设置页会检测插件是否安装：插件通过可选的 `webServer` 服务提供只读 JSON 端点 `/dsh-auxiliary/state`（`{"approvePluginInstalled": true|false}`）；当插件的预设不在 `permissionPresets` 实时表中时，卡片显示"未检测到插件"并禁用编辑。端点仅监听本机回环、不返回敏感数据，headless profile 中不会注册。
+设置页会检测插件是否安装：插件通过可选的 `webServer` 服务提供只读 JSON 端点 `/dsh-auxiliary-neo/state`（`{"approvePluginInstalled": true|false}`）；当插件的预设不在 `permissionPresets` 实时表中时，卡片显示"未检测到插件"并禁用编辑。端点仅监听本机回环、不返回敏感数据，headless profile 中不会注册。
 
 ### 子代理模型
 
@@ -199,7 +201,7 @@ harness 的 LLM 抽象只处理文本，因此生图直接对话提供商的 **O
 │  工具：inspect_image（视觉）· describe_image（转交）               │
 │        generate_image（生图）  + systemPrompt.section(...)          │
 │  resolveModelInfo 包装 + 图片→文本引用替换（转交）                  │
-│  /dsh-auxiliary/state 端点（审批插件检测）                          │
+│  /dsh-auxiliary-neo/state 端点（审批插件检测）                          │
 └────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -224,7 +226,7 @@ harness 的 LLM 抽象只处理文本，因此生图直接对话提供商的 **O
 
 ### 3. 设置集成与模型目录
 
-插件注册自己的设置命名空间（`dsh-auxiliary`，schemastery schema）；设置页通过 `settings.update(...)` 写入，`installSettingsSection` 保持插件解析视图同步。两个细节值得注意：
+插件注册自己的设置命名空间（`dsh-auxiliary-neo`，schemastery schema）；设置页通过 `settings.update(...)` 写入，`installSettingsSection` 保持插件解析视图同步。两个细节值得注意：
 
 - **原始与解析视图**：`llm-pi-ai` 命名空间中的模型行由 `z.object` schema 校验，会从*解析后*视图剥离未知键但不会抛错——因此 `imageGeneration` 这类非 schema 字段能存活在**原始 user 段**中。需要看到这类字段的读取走 `namespace.user`（原始）；路由读取用 `settings.get()`（解析后）。
 - **DOM 注入**：模型目录页归 harness 客户端所有，插件用 `MutationObserver` 观察 DOM，在每行用户自有模型的展开高级区追加 **允许图片输入** / **允许图片生成** 复选框。复选框从原始 user 段初始化；变更先暂存在浏览器，待该提供方卡片关闭（页面 Apply 后）再写回原始 user 段，避免与页面自身的 revision 校验冲突；生图选择器只列出被标记的模型。
@@ -242,7 +244,7 @@ harness 的 LLM 抽象只处理文本，因此生图直接对话提供商的 **O
 所有字段均可选，括号内为默认值。
 
 ```yaml
-- name: '@dsh-plugin/dsh-auxiliary'
+- name: 'dsh-auxiliary-neo'
   config:
     vision:
       maxTokens: 2048                      # inspect_image 输出上限（provider/model 由设置页写入）

@@ -2,26 +2,28 @@
 
 ![Banner](./docs/banner.png)
 
-# dsh-auxiliary
+# dsh-auxiliary-neo
+
+Use it on DSH v0.2.0-rc.2.
 
 **Auxiliary models for DeepSeek Harness — dedicated model routes, tools, and system guidance for vision, compaction, reviews, subagents, titles, and image generation, without touching the main conversation model.**
 
 English | [简体中文](README.zh_CN.md)
 
 [![DSH Plugin](https://img.shields.io/badge/DeepSeek%20Harness-plugin-4f7cff)](https://github.com/topics/dsh-plugin)
-<a href="https://github.com/dsh-plugins/dsh-auxiliary/actions/workflows/npm-publish.yml">
-  <img src="https://github.com/dsh-plugins/dsh-auxiliary/actions/workflows/npm-publish.yml/badge.svg" alt="Build Status">
+<a href="https://github.com/HappyCode-HC/dsh-auxiliary-neo/actions/workflows/npm-publish.yml">
+  <img src="https://github.com/HappyCode-HC/dsh-auxiliary-neo/actions/workflows/npm-publish.yml/badge.svg" alt="Build Status">
 </a>
-<a href="https://www.npmjs.com/package/@dsh-plugin/dsh-auxiliary">
-  <img src="https://img.shields.io/npm/v/@dsh-plugin/dsh-auxiliary.svg?sanitize=true" alt="Version">
+<a href="https://www.npmjs.com/package/dsh-auxiliary-neo">
+  <img src="https://img.shields.io/npm/v/dsh-auxiliary-neo.svg?sanitize=true" alt="Version">
 </a>
-<a href="https://www.npmjs.com/package/@dsh-plugin/dsh-auxiliary">
-  <img src="https://img.shields.io/npm/l/@dsh-plugin/dsh-auxiliary.svg?sanitize=true" alt="License">
+<a href="https://www.npmjs.com/package/dsh-auxiliary-neo">
+  <img src="https://img.shields.io/npm/l/dsh-auxiliary-neo.svg?sanitize=true" alt="License">
 </a>
 
 </div>
 
-`dsh-auxiliary` is a [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) plugin that layers auxiliary-model capabilities on the harness LLM seam (`ctx.llm`). It never replaces the main conversation model: each feature is an independent, optional route that kicks in only for its own narrow call category, so you can give expensive or specialized work (vision, compaction summaries, approval reviews, delegated subagents, session titles, image generation) its own cheap or capable model.
+`dsh-auxiliary-neo` is a [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) plugin that layers auxiliary-model capabilities on the harness LLM seam (`ctx.llm`). It never replaces the main conversation model: each feature is an independent, optional route that kicks in only for its own narrow call category, so you can give expensive or specialized work (vision, compaction summaries, approval reviews, delegated subagents, session titles, image generation) its own cheap or capable model.
 
 ## Feature overview
 
@@ -46,13 +48,13 @@ GUI). The agent performs the install and verification for you — no manual npm
 or profile editing needed:
 
 ```text
-Install the @dsh-plugin/dsh-auxiliary plugin into the profile I specify (or ask me if I didn't name one). The npm package name is `@dsh-plugin/dsh-auxiliary`; use the GitHub source `github:dsh-plugins/dsh-auxiliary`, or `file:<path>` for local development.
+Install the dsh-auxiliary-neo plugin into the profile I specify (or ask me if I didn't name one). The npm package name is `dsh-auxiliary-neo`; use the GitHub source `github:HappyCode-HC/dsh-auxiliary-neo`, or `file:<path>` for local development.
 
 Steps:
-1. Add the plugin dependency: `dsh plugin --profile <PROFILE> add @dsh-plugin/dsh-auxiliary` (or the equivalent plugin-manager command for my profile). Since 0.4.1 the package is a bundle plugin (declares `dsh.bundle.patch`), so `dsh plugin add` also appends it to `dsh.profile.bundles` automatically — no manual `cordis.patch.yml` insert needed.
+1. Add the plugin dependency: `dsh plugin --profile <PROFILE> add dsh-auxiliary-neo` (or the equivalent plugin-manager command for my profile). Since 0.4.1 the package is a bundle plugin (declares `dsh.bundle.patch`), so `dsh plugin add` also appends it to `dsh.profile.bundles` automatically — no manual `cordis.patch.yml` insert needed.
 2. The package declares a `prepack` build script. If pnpm fails with `ERR_PNPM_IGNORED_BUILDS`, approve the build in the profile's `pnpm-workspace.yaml` (`allowBuilds`) and retry the add.
 3. If this profile previously loaded the plugin through a manual insert row in `cordis.patch.yml` (pre-0.4.1 style), REMOVE that row — the bundle layer now mounts the plugin, and keeping both would mount it twice.
-4. Verify `node_modules/@dsh-plugin/dsh-auxiliary` holds a built `lib/` directory (at least `lib/index.js` and `lib/client.js`). If the build artifacts are missing, run `npm run build` in the plugin directory and re-add.
+4. Verify `node_modules/dsh-auxiliary-neo` holds a built `lib/` directory (at least `lib/index.js` and `lib/client.js`). If the build artifacts are missing, run `npm run build` in the plugin directory and re-add.
 5. Do not start the profile — install and verify only, then report what you changed.
 ```
 
@@ -134,7 +136,7 @@ approve:
 
 The routing activates only when enabled with a complete route; without the plugin installed there are no review calls, so the listener is inert. Requires approve-for-me's `mode: review` plus the `approve-for-me` or `strict-review` permission preset. Prefer a cheap, fast model.
 
-The settings page detects installation: the plugin serves a read-only JSON endpoint at `/dsh-auxiliary/state` (`{"approvePluginInstalled": true|false}`) through the optional `webServer` service, and the card shows a "plugin not installed" notice with editing disabled when the presets are absent from the live `permissionPresets` table. The endpoint is loopback-local, returns no sensitive data, and is absent on headless profiles.
+The settings page detects installation: the plugin serves a read-only JSON endpoint at `/dsh-auxiliary-neo/state` (`{"approvePluginInstalled": true|false}`) through the optional `webServer` service, and the card shows a "plugin not installed" notice with editing disabled when the presets are absent from the live `permissionPresets` table. The endpoint is loopback-local, returns no sensitive data, and is absent on headless profiles.
 
 ### Subagent model
 
@@ -202,7 +204,7 @@ The plugin is built on standard DSH extension points (see the [plugin developmen
 │  tools: inspect_image (vision) · describe_image (handoff)          │
 │         generate_image (imagegen)  + systemPrompt.section(...)     │
 │  resolveModelInfo wrapper + image→text-reference swap (handoff)    │
-│  /dsh-auxiliary/state endpoint (approve plugin detection)          │
+│  /dsh-auxiliary-neo/state endpoint (approve plugin detection)          │
 └────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -227,7 +229,7 @@ Each tool is registered only while its feature is enabled with a complete route 
 
 ### 3. Settings integration and the model catalog
 
-The plugin registers its own settings namespace (`dsh-auxiliary`) with a schemastery schema; the settings page writes through `settings.update(...)`, and `installSettingsSection` keeps the plugin's resolved view in sync. Two details matter:
+The plugin registers its own settings namespace (`dsh-auxiliary-neo`) with a schemastery schema; the settings page writes through `settings.update(...)`, and `installSettingsSection` keeps the plugin's resolved view in sync. Two details matter:
 
 - **Raw vs resolved**: model rows in the `llm-pi-ai` namespace are validated by a `z.object` schema that strips unknown keys from *resolved* views but does not throw — so non-schema fields like `imageGeneration` survive in the **raw user section**. Reads that must see such fields go through `namespace.user` (raw); routed reads use `settings.get()` (resolved).
 - **DOM injection**: the model catalog page is owned by the harness client, so the plugin observes the DOM (`MutationObserver`) and appends the **Allow image input** / **Allow image generation** checkboxes into each user-owned model row's expanded advanced area. The checkboxes initialize from the raw user section; changes are held in the browser until that provider card closes (after the page's Apply) and are then written back to the raw user section, so they cannot race the page's own revision check. The image-generation picker filters the catalog to marked models only.
@@ -245,7 +247,7 @@ Each feature is owned by a `reconcile*()` + disposer pair: on every settings cha
 All fields are optional; defaults are shown.
 
 ```yaml
-- name: '@dsh-plugin/dsh-auxiliary'
+- name: 'dsh-auxiliary-neo'
   config:
     vision:
       maxTokens: 2048                      # inspect_image output cap (provider/model written by the settings page)

@@ -1,12 +1,12 @@
 /**
- * dsh-auxiliary — auxiliary models for DeepSeek Harness.
+ * dsh-auxiliary-neo — auxiliary models for DeepSeek Harness.
  *
  * Exposes the `inspect_image` tool through an already-configured vision-capable
  * provider/model pair, reroutes compaction summaries to a dedicated auxiliary
  * pair, and optionally replaces the compaction backend with an explicit
  * compression engine.
  *
- * @module dsh-auxiliary
+ * @module dsh-auxiliary-neo
  */
 import type { Context } from '@deepseek-ai/cordis';
 import { Config, PLUGIN_ID, PLUGIN_NAME, resolvePluginConfig, type PluginConfig, type ResolvedPluginConfig } from './config.js';
@@ -45,7 +45,7 @@ export const inject = ['dshLoader', 'llm', 'tools', 'systemPrompt', 'attachments
 /**
  * User-settings namespace owning the whole plugin section.
  *
- * On 0.2.0 the namespace is simply the profile entry id (`dsh-auxiliary`, from
+ * On 0.2.0 the namespace is simply the profile entry id (`dsh-auxiliary-neo`, from
  * this package's `cordis.patch.yml`), which is what `SettingsForms.describe()`
  * reports as `ns` and what the "Auxiliary Models" page writes back. No
  * registration call is involved: the entry id IS the namespace.
@@ -58,7 +58,7 @@ const NS = PLUGIN_ID;
  * route or custom endpoint; generic provider views expose it as inactive, and
  * the auxiliary selector filters it out.
  */
-const SETTINGS_DIRECTORY_PROVIDER = 'dsh-auxiliary-settings';
+const SETTINGS_DIRECTORY_PROVIDER = 'dsh-auxiliary-neo-settings';
 
 /** Cordis plugin entry. */
 export function apply(ctx: Context, config: PluginConfig): void {
@@ -71,7 +71,7 @@ export function apply(ctx: Context, config: PluginConfig): void {
 
   // 0.2.0 把 settings 搬进了插件自己的 Cordis Config：本插件的 `Config`（见
   // ./config.ts，每个可编辑叶子都标了 `.volatile()`）就是设置页的数据源，profile
-  // 条目 id（`dsh-auxiliary`）就是命名空间。`configure({ auto: false })` 关掉
+  // 条目 id（`dsh-auxiliary-neo`）就是命名空间。`configure({ auto: false })` 关掉
   // 自动生成的页面，保留本插件自定义的 Auxiliary Models 页；它必须挂在**本插件
   // 自己的 fiber** 上（`ctx.fiber`），并作为 effect 注册以便随卸载撤销。
   //
@@ -104,7 +104,7 @@ export function apply(ctx: Context, config: PluginConfig): void {
     } catch (error) {
       if (lastGood === undefined) throw error;
       lastRaw = raw;
-      ctx.logger.error('dsh-auxiliary: keeping the last good configuration after an invalid settings section');
+      ctx.logger.error('dsh-auxiliary-neo: keeping the last good configuration after an invalid settings section');
       ctx.logger.error(error);
       return lastGood;
     }
@@ -112,7 +112,7 @@ export function apply(ctx: Context, config: PluginConfig): void {
 
   ctx.llm.registerConfigurableProviders([{
     provider: SETTINGS_DIRECTORY_PROVIDER,
-    displayName: 'dsh-auxiliary settings',
+    displayName: 'dsh-auxiliary-neo settings',
     settingsNs: NS,
     settingsPath: ['vision']
   }]);
@@ -227,7 +227,7 @@ export function apply(ctx: Context, config: PluginConfig): void {
     disposeTitleRouter();
     approveStateDisposer();
     compressionEngine = undefined;
-  }, 'dsh-auxiliary: vision tool, handoff, and approval-router lifecycle');
+  }, 'dsh-auxiliary-neo: vision tool, handoff, and approval-router lifecycle');
 
   // Re-reconcile whenever the loader commits a volatile-only config change into
   // this entry's live references. `loader/volatile-update` is the canonical

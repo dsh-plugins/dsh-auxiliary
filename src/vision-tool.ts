@@ -5,7 +5,7 @@
  * preserving the existing execution-time error and pass-through behavior while
  * route values are read from the current resolved snapshot for each call.
  *
- * @module dsh-auxiliary/vision-tool
+ * @module dsh-auxiliary-neo/vision-tool
  */
 import type { Context } from '@deepseek-ai/cordis';
 import type { BlockAssembler, ContentBlock, GenerateOptions } from '@deepseek-ai/dsh-llm';
@@ -143,7 +143,7 @@ async function askVision(
 ): Promise<VisionAnswer> {
   const vision = get().vision;
   if (vision.provider === undefined || vision.model === undefined) {
-    throw new Error(`${toolName}: no vision provider/model is selected; select both in dsh-auxiliary settings before using this tool`);
+    throw new Error(`${toolName}: no vision provider/model is selected; select both in dsh-auxiliary-neo settings before using this tool`);
   }
   const messages = [
     llm().createUserMessage({
@@ -151,7 +151,7 @@ async function askVision(
         { type: 'image', attachment },
         { type: 'text', text: question }
       ],
-      source: { kind: 'dsh-auxiliary' }
+      source: { kind: 'dsh-auxiliary-neo' }
     })
   ];
   const timeout = dsh().timeout.deadline(signal, get().tool.timeoutMs, VISION_TOOL_TIMEOUT_CODE);

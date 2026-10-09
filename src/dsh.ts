@@ -1,5 +1,5 @@
 /**
- * dsh-auxiliary 的 dsh 符号接入点。
+ * dsh-auxiliary-neo 的 dsh 符号接入点。
  *
  * 本插件的宿主半区有 10 个文件需要 dsh 的**模块级**导出（`defineTool`、
  * `ToolArgsError`、`deadline`、`credentialRef`、`delegationDepthOf`、
@@ -21,7 +21,7 @@
  *   - `settingsNamespace('llm-pi-ai')`（imagegen-tool.ts 顶层）→ dsh 的实现是
  *     纯校验 + 原样返回（只在类型层加品牌），因此顶层直接用裸字符串等价。
  *
- * @module dsh-auxiliary/dsh
+ * @module dsh-auxiliary-neo/dsh
  */
 
 /**
@@ -75,14 +75,14 @@ export interface LlmHelpers {
  * 0.2.0 的 `MessageSourceMap` 只有 `user | model | tool | system-prompt`（无
  * `plugin`），且没有随包发布的扩展。dsh 的约定是每个生产者自行声明自己的
  * `kind`（`dsh-tools` 的 `tool-registry`、`dsh-user-approval` 的 `user-approval`
- * 都这么做）。这里同样用模块增强声明一个具名的 `dsh-auxiliary` 来源：消息仍是
+ * 都这么做）。这里同样用模块增强声明一个具名的 `dsh-auxiliary-neo` 来源：消息仍是
  * `createUserMessage` 造出的 user-role 消息（插件消息就是 user-role），但归属
  * 保持真实，而不是伪装成用户消息。
  */
 declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
-    'dsh-auxiliary': {
-      kind: 'dsh-auxiliary';
+    'dsh-auxiliary-neo': {
+      kind: 'dsh-auxiliary-neo';
     };
   }
 }
@@ -132,7 +132,7 @@ export function clearDshFacade(): void {
  */
 export function dsh(): DshSymbols {
   if (facade === undefined) {
-    throw new Error('dsh-auxiliary: ctx.dshLoader 尚未注入；dsh() 只能在 apply 之后调用');
+    throw new Error('dsh-auxiliary-neo: ctx.dshLoader 尚未注入；dsh() 只能在 apply 之后调用');
   }
   return facade.dsh;
 }
@@ -140,7 +140,7 @@ export function dsh(): DshSymbols {
 /** dsh 的 LLM 消息构造 helper。 */
 export function llm(): LlmHelpers {
   if (facade === undefined) {
-    throw new Error('dsh-auxiliary: ctx.dshLoader 尚未注入；llm() 只能在 apply 之后调用');
+    throw new Error('dsh-auxiliary-neo: ctx.dshLoader 尚未注入；llm() 只能在 apply 之后调用');
   }
   return facade.llm;
 }

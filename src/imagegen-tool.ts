@@ -13,7 +13,7 @@
  * When the feature is disabled or incomplete the tool stays unregistered (the
  * model never sees it).
  *
- * @module dsh-auxiliary/imagegen-tool
+ * @module dsh-auxiliary-neo/imagegen-tool
  */
 import type { Context } from '@deepseek-ai/cordis';
 // Type-only side-effect imports: pull the `ctx.tools` / `ctx.credentials`
@@ -310,7 +310,7 @@ export function registerImagegenTool(ctx: Context, get: () => ResolvedPluginConf
           { type: 'text', text: `Generated ${paths.length} image(s):\n${paths.map((path) => `- ${path}`).join('\n')}` },
           ...images.map((ref) => ({ type: 'image' as const, attachment: ref as unknown as ImageAttachmentRef })),
         ],
-        source: { kind: 'dsh-auxiliary' },
+        source: { kind: 'dsh-auxiliary-neo' },
       }));
       return {
         content: `Generated ${paths.length} image(s):\n${paths.map((path) => `- ${path}`).join('\n')}`,

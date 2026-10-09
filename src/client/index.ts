@@ -1,5 +1,5 @@
 /**
- * Browser-half entry for dsh-auxiliary — runs inside the dsh web GUI.
+ * Browser-half entry for dsh-auxiliary-neo — runs inside the dsh web GUI.
  *
  * Registers the "Auxiliary Models" settings section (`settings.section` slot):
  * a page with independent vision and compaction cards that pick provider/model
@@ -25,12 +25,12 @@ import { en, zh, type AuxiliaryKey } from './locales.js';
 import { startModelCatalogInjection } from './modelCatalogInject.js';
 
 /** Locale namespace this plugin owns. */
-const NS = 'dsh-auxiliary';
+const NS = 'dsh-auxiliary-neo';
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
-    /** dsh-auxiliary settings-page copy. */
-    'dsh-auxiliary': AuxiliaryKey;
+    /** dsh-auxiliary-neo settings-page copy. */
+    'dsh-auxiliary-neo': AuxiliaryKey;
   }
 }
 
@@ -52,7 +52,7 @@ export type { AuxiliaryKey } from './locales.js';
  * @param ctx - client root context (slots, locale, connection services).
  */
 export function apply(ctx: ClientContext): void {
-  ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-auxiliary: dictionaries');
+  ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-auxiliary-neo: dictionaries');
 
   const connection = ctx.get('connection');
   const t = ctx.locale.bind(NS);
@@ -71,12 +71,12 @@ export function apply(ctx: ClientContext): void {
   const api = (): IApiClient => {
     const face = (connection as unknown as { api?: IApiClient }).api;
     if (face === undefined) {
-      throw new Error('dsh-auxiliary: the client connection API is not available yet');
+      throw new Error('dsh-auxiliary-neo: the client connection API is not available yet');
     }
     return face;
   };
 
-  const injected = (): { api: IApiClient; t: TranslateNS<'dsh-auxiliary'> } => ({
+  const injected = (): { api: IApiClient; t: TranslateNS<'dsh-auxiliary-neo'> } => ({
     api: api(),
     t,
   });
@@ -92,7 +92,7 @@ export function apply(ctx: ClientContext): void {
     // `api` 传访问器而非快照：注入器在 sweep/写入时才读取它，避免把
     // apply 时刻的 undefined 固化下来。
     () => startModelCatalogInjection(api, t, loaderUi?.onDomSettled),
-    'dsh-auxiliary: model catalog capability injection',
+    'dsh-auxiliary-neo: model catalog capability injection',
   );
 
   ctx.slots.inject('settings.section', () => ctx.slots.register({

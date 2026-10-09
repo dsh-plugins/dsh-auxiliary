@@ -1,8 +1,8 @@
 /**
- * tsdown config for dsh-auxiliary — browser client bundle only. The node half
+ * tsdown config for dsh-auxiliary-neo — browser client bundle only. The node half
  * of the plugin (lib/index.js) is emitted by `tsc`; this config produces the
  * `window.__ModuleLoader__.load({id, factory})` closure-factory artifact the
- * GUI's client module system serves at `/plugins/@dsh-plugin/dsh-auxiliary/client.js`.
+ * GUI's client module system serves at `/plugins/dsh-auxiliary-neo/client.js`.
  *
  * Externals resolve through the loader module table (platform seed modules
  * plus the runtime/client exemption); everything else is inlined.
@@ -26,7 +26,7 @@ const CLIENT_EXTERNALS: readonly string[] = [
 ];
 
 export default defineConfig({
-  name: '@dsh-plugin/dsh-auxiliary/client',
+  name: 'dsh-auxiliary-neo/client',
   entry: { client: 'src/client/index.ts' },
   outDir: 'lib',
   format: 'cjs',
@@ -44,7 +44,7 @@ export default defineConfig({
   },
   outputOptions: {
     entryFileNames: 'client.js',
-    banner: 'window.__ModuleLoader__.load({ id: "@dsh-plugin/dsh-auxiliary", factory: (require) => {',
+    banner: 'window.__ModuleLoader__.load({ id: "dsh-auxiliary-neo", factory: (require) => {',
     footer: 'return module.exports; } });',
     intro: 'var module = { exports: {} }; var exports = module.exports;',
   },

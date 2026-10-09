@@ -1,11 +1,11 @@
-# @dsh-plugin/dsh-auxiliary — 配置示例
+# dsh-auxiliary-neo — 配置示例
 
 将本插件加入 DeepSeek Harness 的 profile（`dsh.profile.yml` / `cordis.yml` 的插件列表）。
 以下配置覆盖全部功能；按需删除不需要的分节。
 
 ```yaml
 # cordis.yml（或 profile 的 plugins 列表）
-- name: '@dsh-plugin/dsh-auxiliary'
+- name: 'dsh-auxiliary-neo'
   config:
     # 辅助视觉模型：先在「模型」页添加提供商与模型，
     # 再到 设置 → 辅助模型 选择并保存（写入 vision.provider / vision.model）。

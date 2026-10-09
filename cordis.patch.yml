@@ -1,4 +1,4 @@
-# The dsh-auxiliary bundle patch: inserts this plugin into the profile entry
+# The dsh-auxiliary-neo bundle patch: inserts this plugin into the profile entry
 # list. Declared by `dsh.bundle.patch` in package.json, so `dsh plugin add`
 # reconciles the package into `dsh.profile.bundles` and the profile boot
 # applies this layer automatically — no manual cordis.patch.yml edit needed.
@@ -8,8 +8,8 @@
 # layer adds afterwards can still target this entry by its stable id.
 - insert:
     # Stable id so later layers can patch/disable this row by id.
-    - id: dsh-auxiliary
-      name: '@dsh-plugin/dsh-auxiliary'
+    - id: dsh-auxiliary-neo
+      name: 'dsh-auxiliary-neo'
       config:
         tool:
           enabled: true

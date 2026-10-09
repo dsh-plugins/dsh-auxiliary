@@ -6,7 +6,7 @@
  *   TypeError: sctx.settings.register is not a function
  *     at installSettingsSectionFallback (…/dsh-loader/dist/services/settings.js:106)
  *     at Object.installSection (…/dsh-loader/dist/services/settings.js:300)
- *     at new apply (…/dsh-auxiliary/lib/index.js:192)
+ *     at new apply (…/dsh-auxiliary-neo/lib/index.js:192)
  *
  * DSH 0.2.0 moved settings into the profile plugin Config: `dsh-settings` dropped
  * both the `installSettingsSection` module export and the `SettingsForms.register`
@@ -23,7 +23,7 @@
  *   3. `apply` tolerates a settings service that exposes no `register` at all —
  *      the exact runtime that crashed before.
  *
- * @module dsh-auxiliary/tests/settings-contract
+ * @module dsh-auxiliary-neo/tests/settings-contract
  */
 import assert from 'node:assert/strict';
 import test from 'node:test';

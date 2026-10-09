@@ -9,7 +9,7 @@
  * resolver wrapper advertises handoff-backed image admission for text-only main
  * routes, but never inflates the selected auxiliary route used by `askVision`.
  *
- * @module dsh-auxiliary/image-handoff
+ * @module dsh-auxiliary-neo/image-handoff
  */
 import type { Context } from '@deepseek-ai/cordis';
 import type { ContentBlock, GenerateOptions } from '@deepseek-ai/dsh-llm';

@@ -4,8 +4,8 @@
  *
  * Child agents (one-shot subagents and continuable descendants) inherit their
  * parent's model route by default (`resolveChildAgentOptions`). This module
- * lets dsh-auxiliary pin every child to its own route instead. It is a pure
- * dsh-auxiliary feature — no external plugin required.
+ * lets dsh-auxiliary-neo pin every child to its own route instead. It is a pure
+ * dsh-auxiliary-neo feature — no external plugin required.
  *
  * Mechanism: the plugin listens for `agent/created` (a scope-filtered emit
  * that untagged listeners — plain plugin contexts like this one — receive
@@ -32,7 +32,7 @@
  * providers (ACP) never register a process-local agent and are unaffected;
  * their children keep inheriting the parent route.
  *
- * @module dsh-auxiliary/subagent-router
+ * @module dsh-auxiliary-neo/subagent-router
  */
 import type { Context } from '@deepseek-ai/cordis';
 import type { Agent } from '@deepseek-ai/dsh-agent';

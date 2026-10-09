@@ -9,7 +9,7 @@
  * configured the override falls back to the base implementation, so the engine
  * degrades gracefully.
  *
- * @module dsh-auxiliary/compress-engine
+ * @module dsh-auxiliary-neo/compress-engine
  */
 import type { Context } from '@deepseek-ai/cordis';
 import type { BasicCompactionConfig, ResolvedConfig } from '@deepseek-ai/dsh-compaction-basic';
@@ -64,11 +64,11 @@ function finishError(finish: { kind: string; failure?: { message: string; code: 
       return error;
     }
     case 'max-tokens':
-      return new Error('dsh-auxiliary: compression output reached maxTokens');
+      return new Error('dsh-auxiliary-neo: compression output reached maxTokens');
     case 'tool-calls':
-      return new Error('dsh-auxiliary: compression model unexpectedly requested a tool');
+      return new Error('dsh-auxiliary-neo: compression model unexpectedly requested a tool');
     default:
-      return new Error(`dsh-auxiliary: unsupported finish reason "${String(finish.kind)}"`);
+      return new Error(`dsh-auxiliary-neo: unsupported finish reason "${String(finish.kind)}"`);
   }
 }
 
@@ -164,7 +164,7 @@ function compressEngineClass(): NonNullable<typeof CompressEngineClass> {
         ...input.messages,
         llm().createUserMessage({
           content: [{ type: 'text', text: this.compressPrompt }],
-          source: { kind: 'dsh-auxiliary' }
+          source: { kind: 'dsh-auxiliary-neo' }
         })
       ];
       const assembler = new (dsh().llm.BlockAssembler)();
@@ -185,7 +185,7 @@ function compressEngineClass(): NonNullable<typeof CompressEngineClass> {
       const rawOutput = assembler.blocks();
       const summary = rawOutput.filter((block: ContentBlock): block is Extract<ContentBlock, { type: 'text' }> => block.type === 'text');
       if (!summary.some((block: Extract<ContentBlock, { type: 'text' }>) => block.text.trim().length > 0)) {
-        throw new Error('dsh-auxiliary: compression produced no text summary content');
+        throw new Error('dsh-auxiliary-neo: compression produced no text summary content');
       }
       return {
         summary,
@@ -206,7 +206,7 @@ function compressEngineClass(): NonNullable<typeof CompressEngineClass> {
 /** Install the engine unless `ctx.compaction` is already provided (the stock */
 export function installCompressionEngine(ctx: Context, get: () => ResolvedPluginConfig): CompressEngine | undefined {
   if (ctx.get('compaction') !== undefined) {
-    ctx.logger.warn('dsh-auxiliary: compression engine skipped — ctx.compaction is already provided by dsh-compaction-basic; remove that plugin to enable the auxiliary compression engine');
+    ctx.logger.warn('dsh-auxiliary-neo: compression engine skipped — ctx.compaction is already provided by dsh-compaction-basic; remove that plugin to enable the auxiliary compression engine');
     return undefined;
   }
   const engine = get().engine;

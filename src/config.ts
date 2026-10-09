@@ -1,10 +1,10 @@
 /**
  * Plugin configuration: schemastery schema, runtime validation, and the
  * resolved snapshot consumed by every feature. The same schema backs the
- * `cordis.yml` entry and the optional `dsh-auxiliary` user-settings section,
+ * `cordis.yml` entry and the optional `dsh-auxiliary-neo` user-settings section,
  * so a settings change reaches the very next request.
  *
- * @module dsh-auxiliary/config
+ * @module dsh-auxiliary-neo/config
  */
 import z from '@deepseek-ai/schemastery';
 import { isVolatile, type Volatile } from '@deepseek-ai/cosmokit';
@@ -14,15 +14,22 @@ import { MAX_TIMER_DELAY_MS, deepFreeze } from './dsh.js';
  * Stable plugin id recorded with plugin-sourced messages and tool guidance.
  * This is the cordis plugin name / npm package name.
  */
-export const PLUGIN_NAME = '@dsh-plugin/dsh-auxiliary';
+export const PLUGIN_NAME = 'dsh-auxiliary-neo';
 
 /**
- * Short kebab-case id for identifiers that cannot carry a scoped npm name:
+ * Short kebab-case id for the surfaces that cannot carry the full package name:
  * the settings namespace (`settingsNamespace` accepts only `[a-z0-9-]`) and
- * generated file-name prefixes. Keeping it stable preserves already-saved
- * user settings across the package rename.
+ * generated file-name prefixes.
+ *
+ * On 0.2.0 the settings namespace IS the profile entry id, so this value must
+ * stay equal to the entry `id` in `cordis.patch.yml` and to the browser half's
+ * `NS` in `src/client/index.ts`. If the three drift, the Auxiliary Models page
+ * and the host no longer agree on the namespace that gets read and written.
+ *
+ * The fork rename moved this id off the upstream `dsh-auxiliary`, so settings
+ * saved under the old namespace are intentionally not carried over.
  */
-export const PLUGIN_ID = 'dsh-auxiliary';
+export const PLUGIN_ID = 'dsh-auxiliary-neo';
 
 export const DEFAULT_VISION_MAX_TOKENS = 4096;
 export const DEFAULT_MAX_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -263,43 +270,43 @@ export function resolvePluginConfig(config: PluginConfig): ResolvedPluginConfig 
   const visionProvider = typeof visionProviderRaw === 'string' && visionProviderRaw.length > 0 ? visionProviderRaw : undefined;
   const visionModel = typeof visionModelRaw === 'string' && visionModelRaw.length > 0 ? visionModelRaw : undefined;
   if (Boolean(visionProvider) !== Boolean(visionModel)) {
-    throw new Error('dsh-auxiliary: vision.provider and vision.model must be set together');
+    throw new Error('dsh-auxiliary-neo: vision.provider and vision.model must be set together');
   }
 
   const compactProvider = typeof compactProviderRaw === 'string' ? compactProviderRaw : '';
   const compactModel = typeof compactModelRaw === 'string' ? compactModelRaw : '';
   if (Boolean(compactProvider) !== Boolean(compactModel)) {
-    throw new Error('dsh-auxiliary: compact.provider and compact.model must be set together');
+    throw new Error('dsh-auxiliary-neo: compact.provider and compact.model must be set together');
   }
 
   const approveProvider = typeof approveProviderRaw === 'string' && approveProviderRaw.length > 0 ? approveProviderRaw : undefined;
   const approveModel = typeof approveModelRaw === 'string' && approveModelRaw.length > 0 ? approveModelRaw : undefined;
   if (Boolean(approveProvider) !== Boolean(approveModel)) {
-    throw new Error('dsh-auxiliary: approve.provider and approve.model must be set together');
+    throw new Error('dsh-auxiliary-neo: approve.provider and approve.model must be set together');
   }
 
   const subagentProvider = typeof subagentProviderRaw === 'string' && subagentProviderRaw.length > 0 ? subagentProviderRaw : undefined;
   const subagentModel = typeof subagentModelRaw === 'string' && subagentModelRaw.length > 0 ? subagentModelRaw : undefined;
   if (Boolean(subagentProvider) !== Boolean(subagentModel)) {
-    throw new Error('dsh-auxiliary: subagent.provider and subagent.model must be set together');
+    throw new Error('dsh-auxiliary-neo: subagent.provider and subagent.model must be set together');
   }
 
   const titleProvider = typeof titleProviderRaw === 'string' && titleProviderRaw.length > 0 ? titleProviderRaw : undefined;
   const titleModel = typeof titleModelRaw === 'string' && titleModelRaw.length > 0 ? titleModelRaw : undefined;
   if (Boolean(titleProvider) !== Boolean(titleModel)) {
-    throw new Error('dsh-auxiliary: title.provider and title.model must be set together');
+    throw new Error('dsh-auxiliary-neo: title.provider and title.model must be set together');
   }
 
   const imagegenProvider = typeof imagegenProviderRaw === 'string' && imagegenProviderRaw.length > 0 ? imagegenProviderRaw : undefined;
   const imagegenModel = typeof imagegenModelRaw === 'string' && imagegenModelRaw.length > 0 ? imagegenModelRaw : undefined;
   if (Boolean(imagegenProvider) !== Boolean(imagegenModel)) {
-    throw new Error('dsh-auxiliary: imagegen.provider and imagegen.model must be set together');
+    throw new Error('dsh-auxiliary-neo: imagegen.provider and imagegen.model must be set together');
   }
 
   const thresholdRatio = engineThresholdRatio ?? 0.8;
   const retainRatio = engineRetainRatio ?? 0.16;
   if (retainRatio >= thresholdRatio) {
-    throw new Error('dsh-auxiliary: engine.retainRatio must be less than engine.thresholdRatio');
+    throw new Error('dsh-auxiliary-neo: engine.retainRatio must be less than engine.thresholdRatio');
   }
 
   return deepFreeze({

@@ -4,7 +4,7 @@
  * DSH generates session titles through the `dsh-session-title-llm` provider,
  * which already supports its own `provider`/`model` deployment config — but
  * that config is loader-owned and not user-facing. A `llm/stream` waterfall
- * listener lets dsh-auxiliary provide a dedicated title model instead: every
+ * listener lets dsh-auxiliary-neo provide a dedicated title model instead: every
  * call classified with `purpose: 'session-title'` (the provider's official
  * request marker) is rerouted to the configured pair, while the conversation's
  * own route stays untouched. When the title feature is off or the route is
@@ -16,7 +16,7 @@
  * re-enters the waterfall; the provider/model equality check makes the
  * re-entrant call a pass-through, so no re-entry guard is needed.
  *
- * @module dsh-auxiliary/title-router
+ * @module dsh-auxiliary-neo/title-router
  */
 import type { Context } from '@deepseek-ai/cordis';
 import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm';

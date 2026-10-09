@@ -27,8 +27,8 @@ body:
     attributes:
       label: Plugin Version Details - 插件版本信息
       description: |
-        What version of dsh-auxiliary do you use? The version number is listed on the plugin entry or npm, in the format `x.x.x` (release) or `x.x.x-dev.N` (dev build).
-        你使用的 dsh-auxiliary 版本是什么？版本号见插件列表或 npm，格式为 `x.x.x`（正式版）或 `x.x.x-dev.N`（开发版）。
+        What version of dsh-auxiliary-neo do you use? The version number is listed on the plugin entry or npm, in the format `x.x.x` (release) or `x.x.x-dev.N` (dev build).
+        你使用的 dsh-auxiliary-neo 版本是什么？版本号见插件列表或 npm，格式为 `x.x.x`（正式版）或 `x.x.x-dev.N`（开发版）。
       placeholder: e.g. 1.3.3 or 1.3.3-dev.55
     validations:
       required: true
@@ -40,7 +40,7 @@ body:
       description: |
         Which DSH version and profile does the problem involve? (e.g. instance 0.1.1-rc.2, profile web.) If the problem is unrelated to a specific instance, fill in "N/A".
         问题涉及哪个 DSH 版本与 profile？（例如：实例 0.1.1-rc.2、profile web）如果与具体实例无关，请填 “N/A”。
-      placeholder: e.g. 0.1.1-rc.2 / web
+      placeholder: e.g. 0.2.0-rc.2 / web
     validations:
       required: true
 
@@ -79,10 +79,10 @@ body:
     attributes:
       label: Checks - 检查项
       options:
-        - label: I have searched the [issue tracker](https://github.com/dsh-plugins/dsh-auxiliary/issues) and confirmed that there is no identical issue. 我已经搜索[问题追踪器](https://github.com/dsh-plugins/dsh-auxiliary/issues)并且确认没有相同的 Issue。
+        - label: I have searched the [issue tracker](https://github.com/HappyCode-HC/dsh-auxiliary-neo/issues) and confirmed that there is no identical issue. 我已经搜索[问题追踪器](https://github.com/HappyCode-HC/dsh-auxiliary-neo/issues)并且确认没有相同的 Issue。
           required: true
         - label: I admit that I previously checked all options without thorough verification and directly submitted this Issue, and I agree that it can be closed directly. 我承认此前未充分核实便勾选了所有选项并直接提交此 Issue ，且同意该 Issue 可被直接关闭。
-        - label: I confirm that I am currently using the latest release or dev version of dsh-auxiliary. If not, this issue can be closed directly. 我确认当前使用的是 dsh-auxiliary 的最新正式版或开发版，若非如此，此 Issue 可被直接关闭。
+        - label: I confirm that I am currently using the latest release or dev version of dsh-auxiliary-neo. If not, this issue can be closed directly. 我确认当前使用的是 dsh-auxiliary-neo 的最新正式版或开发版，若非如此，此 Issue 可被直接关闭。
           required: true
         - label: I promise to provide a detailed description of the encountered issue, along with relevant logs and screenshots, rather than offering incomplete or vague information. 我承诺将详细描述遇到的问题，并提供相关日志与截图，而非提供不完整或模糊的信息。
           required: true

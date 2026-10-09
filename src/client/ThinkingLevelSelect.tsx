@@ -4,7 +4,7 @@
  * The popup and checkmark come from the platform `Menu` primitive so the
  * control stays visually and behaviorally consistent with other DSH pickers.
  *
- * @module dsh-auxiliary/client/ThinkingLevelSelect
+ * @module dsh-auxiliary-neo/client/ThinkingLevelSelect
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 // `Menu` 取自 dsh-loader 的包装层 `DshMenu`（单点吸收平台变化）；理由见 ModelPicker.tsx 顶部。

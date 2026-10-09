@@ -1,5 +1,5 @@
 {
-  "name": "@dsh-plugin/dsh-auxiliary",
+  "name": "dsh-auxiliary-neo",
   "version": "0.7.0",
   "description": "DeepSeek Harness plugin that uses configured model providers for image analysis and context compaction.",
   "type": "module",
@@ -38,7 +38,7 @@
   "license": "LGPL-3.0-only",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/dsh-plugins/dsh-auxiliary.git"
+    "url": "git+https://github.com/HappyCode-HC/dsh-auxiliary-neo.git"
   },
   "keywords": [
     "deepseek-harness",
