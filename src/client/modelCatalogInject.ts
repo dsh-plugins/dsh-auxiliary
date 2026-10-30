@@ -42,13 +42,19 @@
  *
  * @module dsh-auxiliary/client/modelCatalogInject
  */
-import type { IApiClient } from '@deepseek-ai/dsh-client-connection/client';
-import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots';
+import { legacyModelEditors } from '../compat.js';
+import type { IApiClient } from './api.js';
+import type { AuxiliaryKey } from './locales.js';
+type Translate = (key: AuxiliaryKey) => string;
 // 图标改用 dsh-loader 的策划集：意图命名（Edit / Add / Delete），fill 为
 // currentColor 因而自动跟随 shell 主题，且不再依赖具体的官方图标导出名。
 import { Icon } from '@dsh-plugin/dsh-loader/client';
 import * as React from 'react';
-import { createRoot } from 'react-dom/client';
+import { createRoot, type Root } from 'react-dom/client';
+const reactRoots = new Map<HTMLElement, Root>();
+function releaseDetachedRoots(): void {
+  for (const [host, root] of reactRoots) if (!host.isConnected) { root.unmount(); reactRoots.delete(host); }
+}
 import { ThinkingLevelSelect } from './ThinkingLevelSelect.js';
 import {
   loadModelGenerationCapability,
@@ -221,7 +227,7 @@ function rowKey(provider: string, model: string): string {
  */
 function buildCheckbox(
   api: IApiClient,
-  t: TranslateNS<'dsh-auxiliary'>,
+  t: Translate,
   provider: string,
   model: string,
   spec: CapabilitySpec,
@@ -363,7 +369,9 @@ function parseThinkingLevelsText(raw: string): readonly string[] | undefined {
 
 /** Mount a primitives icon into a native button host. */
 function mountIcon(host: HTMLElement, node: React.ReactNode): void {
-  createRoot(host).render(node);
+  const root = createRoot(host);
+  reactRoots.set(host, root);
+  root.render(node);
 }
 
 /** A small inline-flex host that keeps icons visually centered. */
@@ -376,7 +384,7 @@ function createIconHost(): HTMLSpanElement {
 
 /** Default thinking-level dropdown mounted through the platform Menu primitive. */
 function buildThinkingDropdown(
-  t: TranslateNS<'dsh-auxiliary'>,
+  t: Translate,
   disabled: boolean,
   onChange: (value: string | null) => void,
 ): { element: HTMLElement; update: (levels: readonly string[], value: string | null) => void } {
@@ -385,6 +393,7 @@ function buildThinkingDropdown(
   host.style.maxWidth = '240px';
   host.style.minWidth = '150px';
   const root = createRoot(host);
+  reactRoots.set(host, root);
   let levels: readonly string[] = [];
   let value: string | null = null;
   const render = (): void => {
@@ -419,7 +428,7 @@ interface ThinkingEditorState {
 
 /** Build the thinking-level editor appended to the model-row capability block. */
 function buildThinkingSection(
-  t: TranslateNS<'dsh-auxiliary'>,
+  t: Translate,
   provider: string,
   model: string,
   pending: PendingMap,
@@ -681,11 +690,12 @@ function buildThinkingSection(
 
 /** Open the free-text bulk editor for thinking levels. */
 function openThinkingBulkPopup(
-  t: TranslateNS<'dsh-auxiliary'>,
+  t: Translate,
   initial: string,
   onConfirm: (levels: readonly string[]) => void,
 ): void {
   const overlay = document.createElement('div');
+  overlay.setAttribute('data-dsh-aux-dialog', '');
   overlay.style.alignItems = 'center';
   overlay.style.background = 'rgba(0, 0, 0, 0.35)';
   overlay.style.display = 'flex';
@@ -800,12 +810,13 @@ function openThinkingBulkPopup(
 /** Build the always-visible capability block for one model row. */
 function buildCapabilityBlock(
   api: IApiClient,
-  t: TranslateNS<'dsh-auxiliary'>,
+  t: Translate,
   provider: string,
   model: string,
   draft: boolean,
   pending: PendingMap,
-  savedRow?: PiAiModelRow,
+  savedRow: PiAiModelRow | undefined,
+  editors: ReturnType<typeof legacyModelEditors>,
 ): HTMLElement {
   const block = document.createElement('div');
   block.setAttribute(MARK_BLOCK, `${provider}\u0000${model}`);
@@ -817,13 +828,13 @@ function buildCapabilityBlock(
   block.style.gridColumn = '1 / -1';
   block.style.marginTop = '8px';
   block.style.padding = '8px 4px 2px';
-  for (const spec of CAPABILITIES) block.append(buildCheckbox(api, t, provider, model, spec, draft, pending));
-  block.append(buildThinkingSection(t, provider, model, pending, savedRow));
+  for (const spec of CAPABILITIES) if (spec.mark !== MARK_IMAGE_INPUT || editors.inputTypes) block.append(buildCheckbox(api, t, provider, model, spec, draft, pending));
+  if (editors.reasoningLevels) block.append(buildThinkingSection(t, provider, model, pending, savedRow));
   return block;
 }
 
 /** Build the plain-text notice shown on rows that cannot carry the marks yet. */
-function buildNotice(t: TranslateNS<'dsh-auxiliary'>, key: 'imageCapabilityUnsupported' | 'imageCapabilitySaveFirst'): HTMLElement {
+function buildNotice(t: Translate, key: 'imageCapabilityUnsupported' | 'imageCapabilitySaveFirst'): HTMLElement {
   const notice = document.createElement('div');
   notice.setAttribute(MARK_NOTICE, '');
   notice.style.color = 'var(--dsw-alias-label-tertiary)';
@@ -865,12 +876,12 @@ function migratePending(pending: PendingMap, from: string, to: string): void {
 }
 
 /** Overlay a previous saved row's persisted capability/thinking marks. */
-function inheritRowFlags(previous: PiAiModelRow, pending: PendingMap, key: string): void {
+function inheritRowFlags(previous: PiAiModelRow, pending: PendingMap, key: string, editors: ReturnType<typeof legacyModelEditors>): void {
   const inherited: PendingFlags = {};
-  if (previous.imageInput !== undefined) inherited[MARK_IMAGE_INPUT] = previous.imageInput;
+  if (editors.inputTypes && previous.imageInput !== undefined) inherited[MARK_IMAGE_INPUT] = previous.imageInput;
   if (previous.imageGen !== undefined) inherited[MARK_IMAGE_GEN] = previous.imageGen;
-  if (previous.thinkingLevels !== undefined) inherited[MARK_THINKING_LEVELS] = previous.thinkingLevels;
-  if (previous.defaultThinkingLevel !== undefined) inherited[MARK_DEFAULT_THINKING] = previous.defaultThinkingLevel;
+  if (editors.reasoningLevels && previous.thinkingLevels !== undefined) inherited[MARK_THINKING_LEVELS] = previous.thinkingLevels;
+  if (editors.reasoningLevels && previous.defaultThinkingLevel !== undefined) inherited[MARK_DEFAULT_THINKING] = previous.defaultThinkingLevel;
   pending.set(key, { ...inherited, ...pending.get(key) });
 }
 
@@ -880,13 +891,14 @@ function inheritRowFlags(previous: PiAiModelRow, pending: PendingMap, key: strin
  */
 function injectRow(
   api: IApiClient,
-  t: TranslateNS<'dsh-auxiliary'>,
+  t: Translate,
   input: Element,
   provider: string,
   model: string,
   draft: boolean,
   entries: ReadonlyArray<PiAiModelRow>,
   pending: PendingMap,
+  editors: ReturnType<typeof legacyModelEditors>,
 ): void {
   const entry = entryOf(input);
   if (entry === null) return;
@@ -909,20 +921,20 @@ function injectRow(
     // in this session, so editing an id does not reset the two checkboxes.
     if (existingKey !== null && existingKey !== key && existingKey.slice(0, existingKey.indexOf('\u0000')) === provider) {
       const previous = entries.find((row) => rowKey(row.provider, row.model) === existingKey);
-      if (previous !== undefined) inheritRowFlags(previous, pending, key);
+      if (previous !== undefined) inheritRowFlags(previous, pending, key, editors);
       migratePending(pending, existingKey, key);
     }
     existing.remove();
   }
   entry.querySelector(`[${MARK_NOTICE}]`)?.remove();
   const savedRow = entries.find((row) => row.provider === provider && row.model === model);
-  panel.append(buildCapabilityBlock(api, t, provider, model, draft, pending, savedRow));
+  panel.append(buildCapabilityBlock(api, t, provider, model, draft, pending, savedRow, editors));
 }
 
 /** Inject the "cannot be marked yet" notice into one row, replacing any stale block. */
 function injectNotice(
   input: Element,
-  t: TranslateNS<'dsh-auxiliary'>,
+  t: Translate,
   key: 'imageCapabilityUnsupported' | 'imageCapabilitySaveFirst',
 ): void {
   const entry = entryOf(input);
@@ -1016,6 +1028,7 @@ async function applyPendingMarks(
   entries: ReadonlyArray<PiAiModelRow>,
   pending: PendingMap,
   reschedule: () => void,
+  editors: ReturnType<typeof legacyModelEditors>,
 ): Promise<boolean> {
   let applied = false;
   for (const [key, flags] of pending) {
@@ -1043,13 +1056,13 @@ async function applyPendingMarks(
       continue;
     }
     try {
-      if (flags['data-dsh-aux-image-input'] !== undefined) {
+      if (editors.inputTypes && flags['data-dsh-aux-image-input'] !== undefined) {
         await saveModelImageCapability(api, provider, model, flags['data-dsh-aux-image-input']);
       }
       if (flags['data-dsh-aux-image-gen'] !== undefined) {
         await saveModelGenerationCapability(api, provider, model, flags['data-dsh-aux-image-gen']);
       }
-      if (flags['data-dsh-aux-thinking-levels'] !== undefined || flags['data-dsh-aux-default-thinking'] !== undefined) {
+      if (editors.reasoningLevels && (flags['data-dsh-aux-thinking-levels'] !== undefined || flags['data-dsh-aux-default-thinking'] !== undefined)) {
         await saveModelThinkingConfig(
           api,
           provider,
@@ -1071,11 +1084,12 @@ async function applyPendingMarks(
 /** One sweep over the page: mark every pi-ai row, explain every other row. */
 function sweep(
   api: IApiClient,
-  t: TranslateNS<'dsh-auxiliary'>,
+  t: Translate,
   entries: ReadonlyArray<PiAiModelRow>,
   catalogKeys: ReadonlySet<string>,
   directory: ProviderDirectory,
   pending: PendingMap,
+  editors: ReturnType<typeof legacyModelEditors>,
 ): void {
   const inputs = document.querySelectorAll('input[aria-label]');
   for (const input of inputs) {
@@ -1088,7 +1102,7 @@ function sweep(
       // are discoverable, disabled until the user types a model id. Keep the
       // last non-empty id recorded so clearing and retyping does not lose marks.
       if (info.settingsNs === 'llm-pi-ai') {
-        injectRow(api, t, input, info.provider, '', true, entries, pending);
+        injectRow(api, t, input, info.provider, '', true, entries, pending, editors);
       } else {
         injectNotice(input, t, 'imageCapabilityUnsupported');
       }
@@ -1098,7 +1112,7 @@ function sweep(
     const previousKey = lastRowKeyByInput.get(input);
     if (previousKey !== undefined && previousKey !== key && previousKey.slice(0, previousKey.indexOf('\u0000')) === info.provider) {
       const previous = entries.find((row) => rowKey(row.provider, row.model) === previousKey);
-      if (previous !== undefined) inheritRowFlags(previous, pending, key);
+      if (previous !== undefined) inheritRowFlags(previous, pending, key, editors);
       migratePending(pending, previousKey, key);
     }
     lastRowKeyByInput.set(input, key);
@@ -1111,7 +1125,7 @@ function sweep(
       // notice.
       const draft = !saved && info.settingsNs === 'llm-pi-ai' && !catalogKeys.has(key);
       if (saved || draft) {
-        injectRow(api, t, input, info.provider, value, draft, entries, pending);
+        injectRow(api, t, input, info.provider, value, draft, entries, pending, editors);
         continue;
       }
     }
@@ -1180,7 +1194,7 @@ async function providerDirectory(api: IApiClient): Promise<ProviderDirectory> {
   const byDisplay = new Map<string, ProviderInfo>();
   const byRoute = new Map<string, ProviderInfo>();
   for (const provider of response.result.value.providers) {
-    const info: ProviderInfo = { provider: provider.provider, settingsNs: provider.settingsNs };
+    const info: ProviderInfo = { provider: provider.provider, settingsNs: provider.settingsNs ?? '' };
     byRoute.set(provider.provider, info);
     if (typeof provider.displayName === 'string' && provider.displayName.length > 0) {
       byDisplay.set(provider.displayName, info);
@@ -1191,11 +1205,11 @@ async function providerDirectory(api: IApiClient): Promise<ProviderDirectory> {
 
 /**
  * Start watching the settings page and keeping the injected checkboxes fresh.
- * Returns a disposer that stops the observer and removes nothing else.
+ * The owner cancels pending writes, unmounts React controls and removes injected nodes.
  */
 export function startModelCatalogInjection(
   api: IApiClient,
-  t: TranslateNS<'dsh-auxiliary'>,
+  t: Translate,
   /**
    * dsh-loader 的 DOM-settled 订阅原语。
    *
@@ -1208,6 +1222,7 @@ export function startModelCatalogInjection(
    * 省略时退回自建 observer（loader 缺席的降级路径）。
    */
   onDomSettled?: (listener: () => void) => () => void,
+  editors = legacyModelEditors(),
 ): () => void {
   let entries: Array<PiAiModelRow> = [];
   let catalogKeys: Set<string> = new Set();
@@ -1216,9 +1231,14 @@ export function startModelCatalogInjection(
   let scheduled = false;
   let refreshTimer: number | undefined;
   let disposed = false;
+  // A settings read may finish after unload; prevent it from starting a write.
+  const upstream = api;
+  api = { ...upstream, settings: { ...upstream.settings, update: input => disposed
+    ? Promise.reject(new Error('dsh-auxiliary unloaded')) : upstream.settings.update(input) } };
 
   const run = async (): Promise<void> => {
     if (disposed) return;
+    releaseDetachedRoots();
     // Rows saved since the last sweep get their pending marks written first.
     const applied = await applyPendingMarks(api, entries, pending, () => {
       // A pending mark entered/inside its quiet window: no DOM change will
@@ -1226,12 +1246,12 @@ export function startModelCatalogInjection(
       window.setTimeout(() => {
         if (!disposed) schedule();
       }, PENDING_WRITE_QUIET_MS + 60);
-    }).catch(() => false);
+    }, editors).catch(() => false);
     if (disposed) return;
     // Do not inject rows from an unloaded (empty) entry list: the fresh-block
     // check would keep those placeholder blocks even after the data loads.
     if (!entriesLoaded) return;
-    sweep(api, t, entries, catalogKeys, directory, pending);
+    sweep(api, t, entries, catalogKeys, directory, pending, editors);
     // The writes may have changed the document; let the debounced re-read
     // refresh entries so the next sweep rebuilds those rows as saved.
     if (applied) schedule();
@@ -1335,5 +1355,8 @@ export function startModelCatalogInjection(
     if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
     stopObserving();
     document.removeEventListener('input', onIdentityInput, true);
+    pending.clear(); pendingQuietSince.clear();
+    document.querySelectorAll(`[${MARK_BLOCK}], [${MARK_NOTICE}], [data-dsh-aux-dialog]`).forEach(node => node.remove());
+    releaseDetachedRoots();
   };
 }

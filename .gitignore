@@ -6,3 +6,6 @@ lib/
 .idea/
 ref/
 .dsh/
+
+.cache/
+*.log

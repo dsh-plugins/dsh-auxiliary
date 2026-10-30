@@ -27,17 +27,17 @@ English | [简体中文](README.zh_CN.md)
 
 | Feature | What it does | Where to configure |
 | --- | --- | --- |
-| Vision understanding | `inspect_image` tool: read a local image and ask a vision model about it | Models page → Auxiliary Models → **Vision understanding** |
+| Vision understanding | `inspect_image` tool: read a local image and ask a vision model about it | Plugin configuration → **Vision understanding** |
 | Image handoff | Chat images survive a text-only main model via `describe_image` | Vision understanding card → **Image handoff** |
-| Context compaction | Summaries (`purpose: 'compaction'`) use a dedicated model | Auxiliary Models → **Context compaction** |
+| Context compaction | Summaries (`purpose: 'compaction'`) use a dedicated model | Plugin configuration → **Context compaction** |
 | Compression engine *(optional)* | Replaces the compaction backend with an explicit compression prompt | `engine.enabled` in the config |
-| Approval model | Reviews from @dsh-plugin/dsh-approve-for-me use a dedicated model | Auxiliary Models → **Approval model** |
-| Subagent model | Delegated child agents use a dedicated model | Auxiliary Models → **Subagent model** |
-| Title model | Session titles (`purpose: 'session-title'`) use a dedicated model | Auxiliary Models → **Title model** |
-| Image-generation model | `generate_image` tool: create images through an OpenAI-compatible images API | Auxiliary Models → **Image-generation model** |
-| Model capability marks | Checkboxes on your own `llm-pi-ai` models: **Allow image input** / **Allow image generation** | Models page → provider → customized settings → model |
+| Approval model | Reviews from @dsh-plugin/dsh-approve-for-me use a dedicated model | Plugin configuration → **Approval model** |
+| Subagent model | Delegated child agents use a dedicated model | Plugin configuration → **Subagent model** |
+| Title model | Session titles (`purpose: 'session-title'`) use a dedicated model | Plugin configuration → **Title model** |
+| Image-generation model | `generate_image` tool: create images through an OpenAI-compatible images API | Plugin configuration → **Image-generation model** |
+| Model capability marks | Checkboxes on your own `llm-pi-ai` models: version-gated **Allow image input** / **Allow image generation** | Models page → provider → customized settings → model |
 
-All routes are configured in **Settings → Auxiliary Models** (the plugin ships that settings section) and take effect immediately on save — no restart, no rebuild of the conversation.
+All routes are configured in **the loader-managed plugin configuration** (rendered by loader) and take effect immediately on save — no restart, no rebuild of the conversation.
 
 ## Installation
 
@@ -56,7 +56,7 @@ Steps:
 5. Do not start the profile — install and verify only, then report what you changed.
 ```
 
-Then open **Settings → Auxiliary Models** in the web UI to configure the
+Then open **the loader-managed plugin configuration** in the web UI to configure the
 routes, and mark the models you want to use in **Settings → Models**.
 
 ## Features in detail
@@ -116,7 +116,7 @@ The listener is always installed and is a pure pass-through until a complete rou
 
 **Compression engine** *(optional)*: `engine.enabled: true` replaces the stock compaction backend with a `BasicCompactionEngine` subclass that drives summarization with an explicit context-compression instruction (see `engine.compressPrompt`). It reuses the compact route and adds no third model route. It is mutually exclusive with `@deepseek-ai/dsh-compaction-basic` — the plugin detects the conflict and skips the engine with a warning.
 
-**Compaction threshold**: the Context compaction card exposes a slider plus a precise percentage input (17%–99%). Saving the threshold also enables the compression engine and writes `engine.thresholdRatio`, so compaction fires automatically once context usage reaches that percentage; the threshold must stay above the retention ratio (`engine.retainRatio`, 16% by default). The engine refreshes the policy before every pressure check, so no restart is needed after saving.
+**Compaction threshold**: set `engine.enabled` and `engine.thresholdRatio` in the unified form, so compaction fires automatically once context usage reaches that percentage; the threshold must stay above the retention ratio (`engine.retainRatio`, 16% by default). The engine refreshes the policy before every pressure check, so no restart is needed after saving.
 
 ### Approval model (@dsh-plugin/dsh-approve-for-me hookup)
 
@@ -134,7 +134,7 @@ approve:
 
 The routing activates only when enabled with a complete route; without the plugin installed there are no review calls, so the listener is inert. Requires approve-for-me's `mode: review` plus the `approve-for-me` or `strict-review` permission preset. Prefer a cheap, fast model.
 
-The settings page detects installation: the plugin serves a read-only JSON endpoint at `/dsh-auxiliary/state` (`{"approvePluginInstalled": true|false}`) through the optional `webServer` service, and the card shows a "plugin not installed" notice with editing disabled when the presets are absent from the live `permissionPresets` table. The endpoint is loopback-local, returns no sensitive data, and is absent on headless profiles.
+The approval router only acts when approve-for-me is installed and issuing review calls.
 
 ### Subagent model
 
@@ -173,38 +173,11 @@ The harness LLM seam only speaks text, so image generation talks to the provider
 2. The tool reads the provider's `baseURL` from the resolved `llm-pi-ai` settings and resolves `apiKeyEnv` through the harness **credential seam** (`ctx.credentials.resolve` — env/file/user-env layers), then calls `POST {baseURL}/images/generations` with `{model, prompt, size, n}`.
 3. The returned images (base64 or URL) are written under the working directory (`.dsh/generated/`) and the file paths are returned; the main model can verify them with `inspect_image`.
 
-**Model capability mark**: the picker only lists models marked **Allow image generation** — check that box in the model's settings (it writes `imageGeneration: true` into the raw user section of the `llm-pi-ai` namespace). Mark exactly the models whose upstream endpoint actually generates images.
+**Model capability mark**: use a model that supports image generation; the optional **Allow image generation** checkbox in model settings writes `imageGeneration: true` into the raw user section of the `llm-pi-ai` namespace. Mark exactly the models whose upstream endpoint actually generates images.
 
 ## How it works
 
-The plugin is built on standard DSH extension points (see the [plugin development guide](https://deepseek-harness.github.io/deepseek-harness/develop/basic/)). Nothing in the harness core is modified.
-
-```
-┌─────────────────────────── Web settings ───────────────────────────┐
-│ Settings → Auxiliary Models (settings.section slot)                │
-│   └─ Feature cards: vision · compact · approve · subagent ·        │
-│      title · imagegen  →  saveAuxFeature → namespace user section  │
-│ Settings → Models (DOM injection via MutationObserver)             │
-│   └─ Model catalog rows: Allow image input / Allow image           │
-│      generation checkboxes → raw user section of llm-pi-ai         │
-└────────────────────────────────────────────────────────────────────┘
-                              │ reads (namespace.user / settings.get)
-                              ▼
-┌─────────────────────────── Host plugin ────────────────────────────┐
-│ config.ts: schemastery schema + resolvePluginConfig (paired checks)│
-│ reconcile*(): register/dispose per feature on config change        │
-│                                                                     │
-│  llm/stream waterfall listeners (purpose-keyed rerouting)           │
-│    ├─ compact router   ← purpose: 'compaction'                     │
-│    ├─ title router     ← purpose: 'session-title'                  │
-│    └─ approve router   ← marker contract (no sessionId, temp 0)    │
-│  agent/request waterfall on scoped child ctx (subagent router)     │
-│  tools: inspect_image (vision) · describe_image (handoff)          │
-│         generate_image (imagegen)  + systemPrompt.section(...)     │
-│  resolveModelInfo wrapper + image→text-reference swap (handoff)    │
-│  /dsh-auxiliary/state endpoint (approve plugin detection)          │
-└────────────────────────────────────────────────────────────────────┘
-```
+The plugin consumes dsh-loader 2.x facades. Config-api owns the form and persistence; model editor enhancements follow the host version in the loader boot description. Feature registrations are reconciled against each updated configuration snapshot.
 
 ### 1. Purpose-keyed model routing
 
@@ -225,12 +198,9 @@ Tools are registered with `ctx.tools.register(defineTool(...))` and announced to
 
 Each tool is registered only while its feature is enabled with a complete route (reconcile pattern), so the model never sees a tool it cannot use.
 
-### 3. Settings integration and the model catalog
+### 3. Configuration and the model catalog
 
-The plugin registers its own settings namespace (`dsh-auxiliary`) with a schemastery schema; the settings page writes through `settings.update(...)`, and `installSettingsSection` keeps the plugin's resolved view in sync. Two details matter:
-
-- **Raw vs resolved**: model rows in the `llm-pi-ai` namespace are validated by a `z.object` schema that strips unknown keys from *resolved* views but does not throw — so non-schema fields like `imageGeneration` survive in the **raw user section**. Reads that must see such fields go through `namespace.user` (raw); routed reads use `settings.get()` (resolved).
-- **DOM injection**: the model catalog page is owned by the harness client, so the plugin observes the DOM (`MutationObserver`) and appends the **Allow image input** / **Allow image generation** checkboxes into each user-owned model row's expanded advanced area. The checkboxes initialize from the raw user section; changes are held in the browser until that provider card closes (after the page's Apply) and are then written back to the raw user section, so they cannot race the page's own revision check. The image-generation picker filters the catalog to marked models only.
+Plugin preferences use config-api independently of host settings and `exposeAllNamespaces`. Model enhancements edit the official `llm-pi-ai` data through the loader-normalized connection API. Once the official editors take over, the plugin removes those controls and stops inherited/deferred writes for their fields. Image generation declarations remain available.
 
 ### 4. Credentials, not plain env
 
@@ -242,7 +212,7 @@ Each feature is owned by a `reconcile*()` + disposer pair: on every settings cha
 
 ## Configuration
 
-All fields are optional; defaults are shown.
+The Cordis row below can seed initial defaults. Subsequent changes use config-api; an existing config file takes precedence.
 
 ```yaml
 - name: '@dsh-plugin/dsh-auxiliary'
@@ -286,63 +256,25 @@ All fields are optional; defaults are shown.
       compressPrompt: "..."                # custom compression instruction
 ```
 
-### Settings page: Auxiliary Models
+### Unified form and 1.x migration
 
-![Auxiliary Models settings page](docs/image.png)
+Requires Node.js 24.9+ and dsh-loader 2.x. Supports its six explicit release families: `0.1.5`, `0.1.6`, `0.1.7`, `0.2.0`, `0.2.1`, `0.2.2`, including prereleases. Before `0.1.6-alpha.2`, use **Settings → Plugin configuration**; from that release, use the plugin detail page.
 
-The plugin ships a web settings section (**Settings → Auxiliary Models**).
-Configure providers and models in the **Models** page first, then use the
-feature cards here: each card has its own enable switch and provider/model
-picker. The picker presents all currently available models together, grouped
-by provider (the image-generation card lists only models marked **Allow image
-generation**). A saved route that is temporarily absent from the catalog is
-kept and is never replaced automatically.
+One collapsed plugin card groups vision, compaction, approval, subagent, title, image generation and compression engine settings. Enter provider/model route IDs already configured in the official Models page. Saved changes apply to subsequent requests; hidden fields keep their values.
 
-### Marking models in the catalog
+Preferences live at `<profile>/config/dsh-auxiliary/config.json`. The old 1.x `dsh-auxiliary` settings namespace is not automatically imported: copy values manually. Cordis row configuration seeds defaults on first registration; an existing file takes precedence. Manual edits require a plugin reload or restart.
 
-For a user-configured `llm-pi-ai` model, open its model settings under
-**Settings → Models → Provider → Customized settings → Models → Model
-settings**:
+Set provider/model pairs together and keep `engine.retainRatio` below `engine.thresholdRatio`. Config-api checks field ranges; runtime cross-field validation reports errors and keeps the last valid running configuration.
 
-- **Allow image input** writes the canonical `input` declaration (`[text,
-  image]` when checked, `[text]` when cleared) — consumed by `inspect_image`
-  and the main chat composer. Enable only when the upstream endpoint actually
-  accepts images.
-- **Allow image generation** writes `imageGeneration: true` — the mark that
-  makes the model selectable in the **Image-generation model** card. Enable
-  only when the upstream endpoint actually generates images.
+### Model editor version boundaries
 
-The checkboxes are injected into every user-owned `llm-pi-ai` model row, inside
-the same capacity disclosure as the **Context window** and **Max output tokens**
-fields, so they stay out of the way until that row fold is expanded. A model you
-are **adding** inside the custom-provider create card gets working checkboxes
-too; a row added without a model id shows both checkboxes disabled inside that
-fold until an id is typed, and editing an existing model id carries its saved
-capability marks to the new id. A changed mark is recorded in the browser first
-and written after the page saves the provider settings (Apply), so you can edit
-other model fields alongside image capabilities without tripping the page's own
-"settings changed elsewhere" revision conflict. Rows that cannot carry the
-marks explain why instead of staying silent: DeepSeek-official (or any
-non-pi-ai adapter) rows show a notice that the marks are `llm-pi-ai`-only, and
-pi-ai catalog rows not yet saved into the user section say to save the model
-first.
+| dsh version | Plugin input editor | Plugin reasoning editor | Image generation flag |
+| --- | --- | --- | --- |
+| `< 0.1.7-rc.1` | Enabled | Enabled | Enabled |
+| `>= 0.1.7-rc.1`, `< 0.2.1-rc.1` | Official UI | Enabled | Enabled |
+| `>= 0.2.1-rc.1` | Official UI | Official UI | Enabled |
 
-The same fold also exposes **thinking-level** configuration: a list of rows
-adds/removes levels (only `off`, `minimal`, `low`, `medium`, `high`, `xhigh`,
-`max`), a pencil button batch-edits text such as `[low, high, max]` and rejects
-the whole input when any entry is invalid, and the default-thinking dropdown
-offers only the levels present in the list. New models start with an empty list
-and no default. These read and write the OFFICIAL model `reasoningEfforts`
-field (level → same-name wire token, `off` → `null`) and the provider-level
-`reasoning` default — the very data pi-ai uses to decide whether a model is a
-reasoning model and to render the composer's reasoning-effort picker, so this
-editor is just an authoring surface for the official mechanism, with no
-plugin-owned storage. Changes are still written only after the provider card
-Apply closes, so they never race the page's revision checks.
-
-> Previous versions stored the levels in plugin-owned fields (`thinkingLevels`
-> / `defaultThinkingLevel`); the first save after upgrading migrates them to
-> the official fields and drops the old ones.
+The named releases are included in each cutoff. Legacy controls live in the model capacity disclosure. Changes wait for the official provider save to finish. Renaming only inherits fields still owned by the plugin for that version. Unload stops observation and deferred writes, removes controls and unmounts React roots.
 
 ## Notes
 

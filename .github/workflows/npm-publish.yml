@@ -42,6 +42,8 @@ jobs:
         run: npm run typecheck
       - name: Build package
         run: npm run build
+      - name: Regression tests
+        run: node --test tests/*.test.mjs
       - name: Inspect npm package contents
         run: npm pack --dry-run
 
@@ -109,6 +111,8 @@ jobs:
           echo "dist_tag=$DIST_TAG" >> "$GITHUB_OUTPUT"
       - name: Build package
         run: npm run build
+      - name: Regression tests
+        run: node --test tests/*.test.mjs
       - name: Inspect npm package contents
         run: npm pack --dry-run
       - name: Check whether the version already exists

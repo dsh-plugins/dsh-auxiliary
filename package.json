@@ -1,6 +1,6 @@
 {
   "name": "@dsh-plugin/dsh-auxiliary",
-  "version": "0.6.4",
+  "version": "2.0.0",
   "description": "DeepSeek Harness plugin that uses configured model providers for image analysis and context compaction.",
   "type": "module",
   "main": "lib/index.js",
@@ -22,10 +22,10 @@
     },
     "client": {
       "inject": [
-        "@deepseek-ai/dsh-client-runtime",
         "@deepseek-ai/dsh-client-connection",
         "@deepseek-ai/dsh-client-locale",
-        "@deepseek-ai/dsh-client-ui-settings"
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@dsh-plugin/dsh-loader"
       ],
       "platform": "web"
     }
@@ -60,10 +60,11 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
-    "@dsh-plugin/dsh-loader": "^1.3.0"
+    "@dsh-plugin/dsh-loader": "^2.0.0-0"
   },
   "peerDependenciesMeta": {},
   "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
     "@deepseek-ai/dsh-agent": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-attachment": "^0.1.0-rc.8",
     "@deepseek-ai/dsh-client-connection": "^0.1.0-rc.6",
@@ -83,13 +84,17 @@
     "@deepseek-ai/dsh-system-prompt": "^0.1.0-rc.8",
     "@deepseek-ai/dsh-timeout": "^0.1.0-rc.8",
     "@deepseek-ai/dsh-tools": "^0.1.0-rc.8",
-    "@dsh-plugin/dsh-loader": "^1.3.0",
+    "@dsh-plugin/dsh-loader": "2.0.0-dev.41037890182",
     "@types/node": "^24.13.3",
     "@types/react": "~18.3.1",
     "@types/react-dom": "~18.2.25",
+    "jsdom": "^26.1.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "tsdown": "0.22.2",
     "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=24.9.0"
   }
 }

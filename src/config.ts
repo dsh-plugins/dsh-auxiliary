@@ -1,7 +1,7 @@
 /**
  * Plugin configuration: schemastery schema, runtime validation, and the
  * resolved snapshot consumed by every feature. The same schema backs the
- * `cordis.yml` entry and the optional `dsh-auxiliary` user-settings section,
+ * bootstrap entry and seeds the independent config-api template,
  * so a settings change reaches the very next request.
  *
  * @module dsh-auxiliary/config
@@ -17,9 +17,9 @@ export const PLUGIN_NAME = '@dsh-plugin/dsh-auxiliary';
 
 /**
  * Short kebab-case id for identifiers that cannot carry a scoped npm name:
- * the settings namespace (`settingsNamespace` accepts only `[a-z0-9-]`) and
+ * the config-api directory and
  * generated file-name prefixes. Keeping it stable preserves already-saved
- * user settings across the package rename.
+ * file paths across package renames.
  */
 export const PLUGIN_ID = 'dsh-auxiliary';
 
