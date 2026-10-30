@@ -115,23 +115,30 @@ compact:
 
 **压缩阈值**：在统一表单中设置 `engine.enabled` 和 `engine.thresholdRatio`，上下文使用率达到该比例后自动触发压缩；阈值必须高于保留比例（`engine.retainRatio`，默认 16%）。引擎会在每次压缩检查前读取最新配置，因此保存后无需重启。
 
-### 审批模型（@dsh-plugin/dsh-approve-for-me 联动）
+### 自动审查模型
 
-[@dsh-plugin/dsh-approve-for-me](https://github.com/dsh-plugins/dsh-approve-for-me) 提供类 Codex 的自动审批；在 `review` 模式下由轻量审查模型裁决每条审批提示。**审批模型** 卡片为审查提供独立模型：
+在 `dsh < 0.1.7-rc.2` 时，`approve` 仍对接 approve-for-me 的 review 调用。从 `0.1.7-rc.2` 起改为对接官方 `@deepseek-ai/dsh-experimental-auto-review`，只替换审查请求的提供方/模型，保留官方的策略、输入、会话归属、取消及裁决流程。先启用官方插件并选择官方自动审查权限模式；辅助模型不会替用户启用自动授权。
 
 ```yaml
 approve:
   enabled: true
-  provider: anvilcraft-ai
-  model: mimo-v2.5
+  provider: my-provider
+  model: my-review-model
 ```
 
-1. 监听 `llm/stream` waterfall，按公开契约识别审查调用——用户消息中的固定标记 `>>> APPROVAL REQUEST START`、无 `sessionId`、`temperature: 0`——并改路由到 `approve.provider` / `approve.model`。
-2. 调用其余部分（安全策略、转录、超时、重试、回退）仍归 approve-for-me 所有；只替换模型路由，裁决依旧不会写入会话历史。
+### 思考过程机器翻译模型
 
-路由仅在功能开启且路由完整时激活；未安装该插件时不存在审查调用，监听器自然闲置。生效前提：approve-for-me 处于 `mode: review` 且会话选中 `approve-for-me` 或 `strict-review` 权限预设。建议选择便宜快速的模型。
+从 `0.2.1-rc.1` 起，统一表单增加「思考过程机器翻译」分组：
 
-设置页会检测插件是否安装：插件通过可选的 `webServer` 服务提供只读 JSON 端点 `/dsh-auxiliary/state`（`{"approvePluginInstalled": true|false}`）；当插件的预设不在 `permissionPresets` 实时表中时，卡片显示"未检测到插件"并禁用编辑。端点仅监听本机回环、不返回敏感数据，headless profile 中不会注册。
+```yaml
+translation:
+  enabled: true
+  model: deepseek-flash  # 官方 deepseek-official 模型目录中已有的 ID
+```
+
+启用 `@deepseek-ai/dsh-experimental-cot-translation-bundle` 后，在官方翻译菜单选择「DeepSeek Flash · 官方 API」，再用本选项指定它实际调用的模型。此处固定使用官方 API 提供方，只修改模型 ID。Bing、Google、DeepSeek 账号翻译继续使用原实现。
+
+保留原生凭据、模型目录和运行状态检查，以及关闭思考、超时、取消、输出校验和会话持久化。配置关闭时使用官方默认 Flash；模型变更后的缓存与原模型隔离，审计记录写入实际模型。需要已配置的官方 API 凭据，接口调用仍按所选模型计费。辅助模型或翻译服务卸载后会取消进行中的覆盖请求并释放补丁。
 
 ### 子代理模型
 

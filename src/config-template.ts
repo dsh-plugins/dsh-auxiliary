@@ -1,7 +1,8 @@
+import { officialModelIntegrations } from './compat.js';
 import { defineConfig, type ConfigField } from '@dsh-plugin/dsh-loader/config';
 import { DEFAULT_COMPRESS_PROMPT, PLUGIN_ID, PLUGIN_NAME, type PluginConfig } from './config.js';
 
-export function createConfigTemplate(base: PluginConfig) {
+export function createConfigTemplate(base: PluginConfig, dshVersion?: string) {
   const route = (enabled = true): ConfigField[] => [
     ...(enabled ? [{ type: 'boolean' as const, key: 'enabled', label: '启用', default: false }] : []),
     { type: 'text', key: 'provider', label: '提供方 ID', default: '', description: '填写官方模型设置中已有的提供方路由 ID。' },
@@ -22,7 +23,11 @@ export function createConfigTemplate(base: PluginConfig) {
       { type: 'number', key: 'maxImageBytes', label: '图片大小上限', default: 10485760, min: 1 },
       { type: 'number', key: 'timeoutMs', label: '超时（毫秒）', default: 120000, min: 1, max: 2147483647 },
     ]),
-    object('compact', '压缩模型', route()), object('approve', '审查模型', route()),
+    object('compact', '压缩模型', route()), object('approve', officialModelIntegrations(dshVersion).autoReview ? '官方自动审查模型' : '审查模型', route()),
+    ...(officialModelIntegrations(dshVersion).translation ? [object('translation', '思考过程机器翻译', [
+      { type: 'boolean', key: 'enabled', label: '替换翻译模型', default: false },
+      { type: 'text', key: 'model', label: '官方 API 模型 ID', default: 'deepseek-flash', required: true, description: '仅作用于 DeepSeek Flash · 官方 API 翻译服务；填写该官方提供方模型目录中已有的 ID。保留关闭思考、会话记录及缓存隔离。' },
+    ])] : []),
     object('subagent', '子智能体模型', route()), object('title', '标题模型', route()), object('imagegen', '图片生成模型', route()),
     object('engine', '压缩引擎', [
       { type: 'boolean', key: 'enabled', label: '启用', default: false },

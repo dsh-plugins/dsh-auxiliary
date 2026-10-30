@@ -10,6 +10,8 @@
  */
 import type { Context } from '@deepseek-ai/cordis';
 import type { HostAPI } from '@dsh-plugin/dsh-loader';
+import { officialModelIntegrations } from './compat.js';
+import { installOfficialTranslationModel } from './translation-router.js';
 import { createConfigTemplate } from './config-template.js';
 import { Config, PLUGIN_ID, PLUGIN_NAME, resolvePluginConfig, type PluginConfig, type ResolvedPluginConfig } from './config.js';
 import { registerVisionTool } from './vision-tool.js';
@@ -22,7 +24,7 @@ import { CompressEngine, installCompressionEngine } from './compress-engine.js';
 import { registerImagegenTool } from './imagegen-tool.js';
 import { clearDshFacade, setDshFacade, type DshFacade } from './dsh.js';
 
-type DshLoaderApi = DshFacade & Pick<HostAPI, 'config'>;
+type DshLoaderApi = DshFacade & Pick<HostAPI, 'config' | 'patch' | 'dshVersion'>;
 
 export { Config, PLUGIN_NAME, resolvePluginConfig } from './config.js';
 export { registerVisionTool, type VisionToolOptions } from './vision-tool.js';
@@ -55,7 +57,7 @@ export async function apply(ctx: Context, config: PluginConfig): Promise<void> {
   // 会话里反而把它隐藏掉。
   const resolveModelInfo = ctx.llm.resolveModelInfo.bind(ctx.llm);
 
-  const handle = await loader.config.register<PluginConfig>({ effect: fn => ctx.effect(() => fn() ?? (() => {})) }, createConfigTemplate(Config(config)));
+  const handle = await loader.config.register<PluginConfig>({ effect: fn => ctx.effect(() => fn() ?? (() => {})) }, createConfigTemplate(Config(config), loader.dshVersion));
   let snapshot = handle.get().value;
   const current = () => snapshot;
   let lastRaw: PluginConfig | undefined;
@@ -120,7 +122,7 @@ export async function apply(ctx: Context, config: PluginConfig): Promise<void> {
     const approve = resolved().approve;
     if (approve.enabled && approve.provider !== undefined && approve.model !== undefined) {
       if (approveRouterDisposer === undefined) {
-        approveRouterDisposer = registerApproveRouter(ctx, resolved);
+        approveRouterDisposer = registerApproveRouter(ctx, resolved, officialModelIntegrations(loader.dshVersion).autoReview ? 'official' : 'legacy');
       }
       return;
     }
@@ -199,6 +201,13 @@ export async function apply(ctx: Context, config: PluginConfig): Promise<void> {
     reconcileImagegenTool();
     reconcileCompressionEngine();
   });
+
+  if (officialModelIntegrations(loader.dshVersion).translation) {
+    ctx.inject(['translator'], scope => {
+      const translator = scope.get('translator');
+      scope.effect(() => installOfficialTranslationModel(translator, loader.patch, () => resolved().translation));
+    });
+  }
 
   reconcileVisionTool();
   reconcileHandoff();

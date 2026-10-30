@@ -1,36 +1,4 @@
-/**
- * Approval-reviewer routing: a hookup for @dsh-plugin/dsh-approve-for-me.
- *
- * When the approve-for-me plugin is installed and its `mode: review` is active,
- * it asks a reviewer model to decide each approval prompt. By default the
- * reviewer inherits the requesting session's model route, and the plugin offers
- * its own `reviewProvider` / `reviewModel` config — but both are owned by that
- * plugin. This module lets dsh-auxiliary provide a dedicated approval model
- * instead: a listener on the official `llm/stream` waterfall recognizes the
- * plugin's review call and reroutes it to `approve.provider` / `approve.model`.
- *
- * Recognition uses only the plugin's public output contract, so it stays
- * correct across versions: the review user prompt is the fixed marker
- * `>>> APPROVAL REQUEST START` (see the plugin's `renderReviewUserPrompt`), the
- * call carries no `sessionId` (it is not an agent-loop request), and it always
- * runs at `temperature: 0`. No other caller in the harness matches all three.
- *
- * Like the image-handoff listener, the reroute vetoes the chain and re-enters
- * the waterfall with a synchronous guard. The rewritten request intentionally
- * is NOT `markAgentLoopRequest`-marked, so the agent-loop invariant (which only
- * audits marked requests) skips it — matching the original call, which was
- * never marked either.
- *
- * A companion read-only HTTP endpoint (`/dsh-auxiliary/state`) tells the
- * settings page whether the approve-for-me plugin is installed, so the
- * "Approval model" card can show an informative notice instead of a dead
- * configuration. Both `webServer` and `permissionPresets` are optional
- * services: the endpoint simply stays unregistered where no web server exists,
- * and plugin detection degrades to "not installed" when the preset service is
- * absent.
- *
- * @module dsh-auxiliary/approve-router
- */
+/** Route legacy approve-for-me and official Auto reviewer requests without changing decisions. */
 import type { Context } from '@deepseek-ai/cordis';
 import type { GenerateOptions } from '@deepseek-ai/dsh-llm';
 import { deepFreeze } from './dsh.js';
@@ -78,7 +46,15 @@ export function isApproveReviewCall(options: GenerateOptions): boolean {
  * @param ctx - the plugin context with the `llm` service.
  * @param get - current resolved plugin config snapshot.
  */
-export function registerApproveRouter(ctx: Context, get: () => ResolvedPluginConfig): () => void {
+/** Official versions before purpose=auto-review use this policy and environment prefix. */
+export function isOfficialAutoReviewCall(options: GenerateOptions): boolean {
+  return options.temperature === 0 && typeof options.system === 'string'
+    && options.system.startsWith('REVIEW_POLICY\n')
+    && options.messages.some(message => message.role === 'user' && Array.isArray(message.content)
+      && message.content.some(block => block.type === 'text' && block.text.startsWith('ENVIRONMENT\n')));
+}
+
+export function registerApproveRouter(ctx: Context, get: () => ResolvedPluginConfig, target: 'legacy' | 'official' = 'legacy'): () => void {
   const enabled = (): boolean => {
     const approve = get().approve;
     return approve.enabled && approve.provider !== undefined && approve.model !== undefined;
@@ -91,7 +67,7 @@ export function registerApproveRouter(ctx: Context, get: () => ResolvedPluginCon
     if (!enabled()) return next();
     const approve = get().approve;
     if (approve.provider === undefined || approve.model === undefined) return next();
-    if (!isApproveReviewCall(options)) return next();
+    if (!(target === 'official' ? isOfficialAutoReviewCall(options) : isApproveReviewCall(options))) return next();
     if (options.provider === approve.provider && options.model === approve.model) return next();
     const rewritten = deepFreeze({ ...options, provider: approve.provider, model: approve.model });
     active = true;
@@ -130,6 +106,10 @@ function permissionPresetNames(ctx: Context): readonly string[] | undefined {
  * detectable this way.
  */
 export function isApprovePluginInstalled(ctx: Context): boolean {
+  try {
+    const loader = ctx.root.get('loader') as { entries?(): Iterable<{ options: { name?: string }; fiber?: { state: number } }> } | undefined;
+    if ([...(loader?.entries?.() ?? [])].some(entry => entry.options.name === '@deepseek-ai/dsh-experimental-auto-review' && entry.fiber?.state === 2)) return true;
+  } catch { /* legacy profiles can still be detected through their presets */ }
   const names = permissionPresetNames(ctx);
   if (names === undefined) return false;
   return APPROVE_PRESET_NAMES.some((preset) => names.includes(preset));

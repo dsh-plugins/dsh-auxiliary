@@ -14,3 +14,11 @@ test('config template preserves seeded routes and validates complete nested conf
   assert.throws(()=>validateValues(template.fields,{...defaults,engine:{...defaults.engine,thresholdRatio:2}}));
   assert.deepEqual(validateValues(template.fields,JSON.parse(JSON.stringify(defaults))),defaults);
 });
+
+test('only supported hosts receive the official translation form',()=>{
+  const group=version=>createConfigTemplate(Config({}),version).fields.find(field=>field.key==='translation');
+  assert.equal(group('0.2.1-alpha.5'),undefined);
+  const latest=group('0.2.1-rc.1');assert.equal(latest.label,'思考过程机器翻译');
+  assert.equal(defaultsFor([latest]).translation.model,'deepseek-flash');
+  assert.equal(defaultsFor([latest]).translation.enabled,false);
+});

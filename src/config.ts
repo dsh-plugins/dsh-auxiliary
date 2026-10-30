@@ -65,9 +65,13 @@ const Config = z.object({
     model: z.string()
   }),
   approve: z.object({
-    enabled: z.boolean().default(false).description('When @dsh-plugin/dsh-approve-for-me is installed, route its review-mode approval calls to a dedicated model.'),
+    enabled: z.boolean().default(false).description('Route legacy approve-for-me or official Auto review calls to a dedicated model.'),
     provider: z.string(),
     model: z.string()
+  }),
+  translation: z.object({
+    enabled: z.boolean().default(false).description('Override the model of the official API reasoning-translation service on dsh >= 0.2.1-rc.1.'),
+    model: z.string().default('deepseek-flash')
   }),
   subagent: z.object({
     enabled: z.boolean().default(false).description('Route every delegated child agent (subagent) to a dedicated provider/model pair.'),
@@ -173,6 +177,7 @@ export interface ResolvedPluginConfig {
   readonly tool: ResolvedToolConfig;
   readonly compact: ResolvedCompactConfig;
   readonly approve: ResolvedApproveConfig;
+  readonly translation: { readonly enabled: boolean; readonly model: string };
   readonly subagent: ResolvedSubagentConfig;
   readonly title: ResolvedTitleConfig;
   readonly imagegen: ResolvedImagegenConfig;
@@ -255,6 +260,7 @@ export function resolvePluginConfig(config: PluginConfig): ResolvedPluginConfig 
       provider: approveProvider,
       model: approveModel
     },
+    translation: { enabled: config.translation?.enabled ?? false, model: config.translation?.model?.trim() || 'deepseek-flash' },
     subagent: {
       enabled: subagent.enabled ?? false,
       provider: subagentProvider,

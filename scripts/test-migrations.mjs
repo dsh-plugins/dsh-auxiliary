@@ -1,5 +1,6 @@
 /** Sequential production boots in isolated profiles; never touches ~/.dsh. */
 import assert from 'node:assert/strict';
+import { officialModelIntegrations } from '../lib/compat.js';
 import { spawn } from 'node:child_process';
 import { mkdir, readFile, writeFile, realpath, symlink, unlink, lstat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -12,9 +13,20 @@ const aliases = JSON.parse(await readFile(resolve(root, '../dsh-loader/tests/fix
 const selected = process.argv.find(value => value.startsWith('--version='))?.slice(10);
 const keep = process.argv.includes('--keep');
 const results = [];
-const plugins = ['dsh-auxiliary', 'dsh-approve-for-me', 'dsh-thought-buddy'];
+const allPlugins = ['dsh-auxiliary', 'dsh-approve-for-me', 'dsh-thought-buddy'];
 await mkdir(join(root, '.cache/launch'), { recursive: true });
 if (selected && !Object.values(aliases).some(spec => spec.endsWith('@' + selected))) throw new Error(`Unknown fixture version: ${selected}`);
+const fixture=join(root,`.cache/official-model-fixture-${process.pid}`);await mkdir(fixture,{recursive:true});
+await writeFile(join(fixture,'package.json'),JSON.stringify({name:'auxiliary-contracts-fixture',type:'module',main:'index.mjs',dsh:{bundle:{patch:'./cordis.patch.yml'}}}));
+await writeFile(join(fixture,'cordis.patch.yml'),'- insert:\n    - id: auxiliary-contracts-fixture\n      name: auxiliary-contracts-fixture\n');
+await writeFile(join(fixture,'index.mjs'),`export const inject=['dshLoader'];export function apply(ctx){
+ctx.effect(()=>ctx.dshLoader.web.get('/__auxiliary-contracts',async(_req,res)=>{
+let service;try{service=ctx.root.get('translator')}catch{};
+const raw=service?.[Symbol.for('cordis.original')]??service;
+let available,error;try{available=await service?.availableProviders()}catch(e){error=String(e)}
+res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({translationPatched:raw?ctx.dshLoader.patch.isPatched(raw,'translate'):false,available,error}));
+}));}`);
+
 async function link(target, path) {
   await mkdir(dirname(path), { recursive: true });
   const resolved = await realpath(target);
@@ -46,11 +58,14 @@ async function start(version, bin, home, logFile) {
   for (const [alias, spec] of Object.entries(aliases)) {
     const version = spec.split('@').at(-1);
     if (selected && version !== selected) continue;
+    const integrations=officialModelIntegrations(version);
+    const plugins=allPlugins.filter(id=>id!=='dsh-approve-for-me'||!integrations.autoReview);
+    const officialBundles=[...(integrations.autoReview?['@deepseek-ai/dsh-experimental-auto-review']:[]),...(integrations.translation?['@deepseek-ai/dsh-experimental-cot-translation-bundle']:[])];
     const startedAt = Date.now();
     const home = join(root, keep ? '.cache/browser-launch' : '.cache/launch', version), profile = join(home, 'profiles/web');
     await mkdir(profile, { recursive: true });
     const dependencies = Object.fromEntries(['dsh-loader', ...plugins].map(id => [`@dsh-plugin/${id}`, `file:${resolve(root, '..', id)}`]));
-    const pkg = { name: 'migrations-test-web', private: true, dependencies, dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@dsh-plugin/dsh-loader', ...plugins.map(id => `@dsh-plugin/${id}`)], patchReload: 'startup' } } };
+    const pkg = { name: 'migrations-test-web', private: true, dependencies, dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@dsh-plugin/dsh-loader', ...plugins.map(id => `@dsh-plugin/${id}`),...officialBundles,'auxiliary-contracts-fixture'], patchReload: 'startup' } } };
     await writeFile(join(profile, 'package.json'), JSON.stringify(pkg, null, 2));
     await writeFile(join(profile, 'cordis.patch.yml'), '[]\n');
     const separate = resolve(root, '../dsh-network-settings/.cache/versions', version, 'node_modules/@deepseek-ai/dsh');
@@ -58,6 +73,15 @@ async function start(version, bin, home, logFile) {
     await link(installation, join(profile, 'node_modules/@deepseek-ai/dsh'));
     await link(resolve(root, '../dsh-loader'), join(profile, 'node_modules/@dsh-plugin/dsh-loader'));
     for (const id of plugins) await link(resolve(root, '..', id), join(profile, 'node_modules/@dsh-plugin', id));
+    const {createRequire}=await import('node:module');
+    const upstream=createRequire(join(installation,'package.json'));
+    for(const bundle of officialBundles){
+      const directory=dirname(upstream.resolve(bundle+'/package.json'));
+      await link(directory,join(profile,'node_modules',bundle));
+      pkg.dependencies[bundle]='file:'+directory;
+    }
+    await writeFile(join(profile,'package.json'),JSON.stringify(pkg,null,2));
+    await link(fixture,join(profile,'node_modules/auxiliary-contracts-fixture'));
     let server;
     try {
       server = await start(version, join(installation, 'lib/bin.js'), home, join(home, 'host.log'));
@@ -78,10 +102,10 @@ async function start(version, bin, home, logFile) {
         await delay(100);
       }
       assert.equal(list?.status, 200, 'Configuration bridge must activate');
-      assert.deepEqual(list.body.value.map(view=>view.template.id).sort(), [...plugins].sort(), 'All three host plugins activate');
+      assert.deepEqual(list.body.value.map(view=>view.template.id).sort(), [...plugins].sort(), 'All supported host plugins activate');
       for (const id of plugins) {
         const view = list.body.value.find(view => view.template.id === id);
-        const value = id === 'dsh-thought-buddy' ? { ...view.value, mode: 'emoji', size: 22 } : id === 'dsh-approve-for-me' ? { ...view.value, mode: 'never' } : { ...view.value, title: { enabled: false, provider: 'matrix-provider', model: 'matrix-model' } };
+        const value = id === 'dsh-thought-buddy' ? { ...view.value, mode: 'emoji', size: 22 } : id === 'dsh-approve-for-me' ? { ...view.value, mode: 'never' } : { ...view.value, title: { enabled: false, provider: 'matrix-provider', model: 'matrix-model' }, ...(integrations.translation?{translation:{enabled:true,model:'__missing_test_model__'}}:{}) };
         const saved = await request('/api/dshloader/config/' + id, { expectedRevision: view.revision, value });
         assert.equal(saved.status, 200, JSON.stringify(saved.body));
         const reread = await request('/api/dshloader/config/' + id);
@@ -89,6 +113,17 @@ async function start(version, bin, home, logFile) {
         const conflict = await request('/api/dshloader/config/' + id, { expectedRevision: view.revision, value }); assert.equal(conflict.status, 409);
         const disk = JSON.parse(await readFile(join(profile, 'config', id, 'config.json'), 'utf8')); assert.deepEqual(disk.value, value);
       }
+      const auxiliary=list.body.value.find(view=>view.template.id==='dsh-auxiliary');
+      assert.equal(auxiliary.template.fields.some(field=>field.key==='translation'),integrations.translation);
+      let probe;
+      for(let i=0;i<100;i++){
+        probe=await request('/__auxiliary-contracts');
+        if(probe.status===200&&probe.body.translationPatched===integrations.translation)break;
+        await delay(100);
+      }
+      assert.equal(probe.body.error,undefined,'traceable native translator can run');
+      if(integrations.translation)assert(!probe.body.available.includes('deepseek-official'),'missing override model stays unavailable');
+      assert.equal(probe.body.translationPatched,integrations.translation,'official translator patch must really activate');
       await delay(300);
       assert.equal(server.child.exitCode, null, 'Host survives live policy scope update');
       const html = await (await fetch(origin, { headers: { cookie } })).text();

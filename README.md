@@ -118,23 +118,30 @@ The listener is always installed and is a pure pass-through until a complete rou
 
 **Compaction threshold**: set `engine.enabled` and `engine.thresholdRatio` in the unified form, so compaction fires automatically once context usage reaches that percentage; the threshold must stay above the retention ratio (`engine.retainRatio`, 16% by default). The engine refreshes the policy before every pressure check, so no restart is needed after saving.
 
-### Approval model (@dsh-plugin/dsh-approve-for-me hookup)
+### Automatic review model
 
-[@dsh-plugin/dsh-approve-for-me](https://github.com/dsh-plugins/dsh-approve-for-me) adds codex-style auto-approval; in `review` mode a lightweight reviewer model decides each approval prompt. The **Approval model** card gives the review a dedicated model:
+Before `0.1.7-rc.2`, `approve` routes approve-for-me review calls. From that release, it routes official `@deepseek-ai/dsh-experimental-auto-review` calls. Only provider/model are replaced; official policy, inputs, Session attribution, cancellation and decisions remain native. Enable the official plugin and choose its Auto permission mode separately.
 
 ```yaml
 approve:
   enabled: true
-  provider: anvilcraft-ai
-  model: mimo-v2.5
+  provider: my-provider
+  model: my-review-model
 ```
 
-1. A listener on the `llm/stream` waterfall recognizes the review call by its public contract — the fixed `>>> APPROVAL REQUEST START` marker in the user message, no `sessionId`, and `temperature: 0` — and reroutes it to `approve.provider` / `approve.model`.
-2. Everything else about the call (policy, transcript, timeout, retries, fallback) stays owned by approve-for-me; only the model route is swapped, and the verdict never enters the session history.
+### Reasoning machine-translation model
 
-The routing activates only when enabled with a complete route; without the plugin installed there are no review calls, so the listener is inert. Requires approve-for-me's `mode: review` plus the `approve-for-me` or `strict-review` permission preset. Prefer a cheap, fast model.
+From `0.2.1-rc.1`, the unified form includes a reasoning translation group:
 
-The approval router only acts when approve-for-me is installed and issuing review calls.
+```yaml
+translation:
+  enabled: true
+  model: deepseek-flash  # an existing model ID in the native official-API catalog
+```
+
+Enable `@deepseek-ai/dsh-experimental-cot-translation-bundle` and select **DeepSeek Flash · Official API** in its translation menu. This setting changes that service's model, keeping the `deepseek-official` provider. Bing, Google and Account translation keep their original behavior.
+
+Native credential/model/owner checks, thinking-off requests, deadlines, cancellation, response validation and Session storage are retained. Disabled overrides use native Flash. Selected models have distinct cache identities and truthful audit metadata. Configure official API credentials separately; inference uses the selected model's normal billing. Unloading releases patches and cancels active override requests.
 
 ### Subagent model
 
