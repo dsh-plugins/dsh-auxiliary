@@ -164,6 +164,7 @@ async function askVision(
     for await (const chunk of ctx.llm.stream(deepFreeze({
       provider: vision.provider,
       model: vision.model,
+      ...(vision.reasoningEffort ? { reasoningEffort: vision.reasoningEffort } : {}),
       messages,
       maxTokens: vision.maxTokens,
       ...(sessionId !== undefined ? { sessionId } : {}),

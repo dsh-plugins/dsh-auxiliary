@@ -15,7 +15,7 @@ import type { Context } from '@deepseek-ai/cordis';
 import type { BasicCompactionConfig, ResolvedConfig } from '@deepseek-ai/dsh-compaction-basic';
 import type { CompactionResult, CompactionTrigger } from '@deepseek-ai/dsh-compaction';
 import type { Agent } from '@deepseek-ai/dsh-agent';
-import type { ContentBlock, Message, TokenUsage, ToolSchema } from '@deepseek-ai/dsh-llm';
+import type { ContentBlock, Message, TokenUsage, ToolSchema, ReasoningEffortId } from '@deepseek-ai/dsh-llm';
 import { dsh, llm } from './dsh.js';
 import { PLUGIN_NAME } from './config.js';
 import { compactRoute } from './compact-router.js';
@@ -78,7 +78,7 @@ let CompressEngineClass: (new (
   ctx: Context,
   config: BasicCompactionConfig | undefined,
   compressPrompt: string,
-  auxRoute: () => { provider: string; model: string } | undefined,
+  auxRoute: () => { provider: string; model: string; reasoningEffort?: ReasoningEffortId } | undefined,
   getEngineConfig: () => ResolvedEngineConfig,
 ) => CompressEngine) | undefined;
 
@@ -96,14 +96,14 @@ function compressEngineClass(): NonNullable<typeof CompressEngineClass> {
 
   class CompressEngineImpl extends Base {
     private readonly compressPrompt: string;
-    private readonly auxRoute: () => { provider: string; model: string } | undefined;
+    private readonly auxRoute: () => { provider: string; model: string; reasoningEffort?: ReasoningEffortId } | undefined;
     private readonly getEngineConfig: () => ResolvedEngineConfig;
 
     constructor(
       ctx: Context,
       config: BasicCompactionConfig | undefined,
       compressPrompt: string,
-      auxRoute: () => { provider: string; model: string } | undefined,
+      auxRoute: () => { provider: string; model: string; reasoningEffort?: ReasoningEffortId } | undefined,
       getEngineConfig: () => ResolvedEngineConfig
     ) {
       super(ctx, config);
@@ -158,6 +158,7 @@ function compressEngineClass(): NonNullable<typeof CompressEngineClass> {
       for await (const chunk of this.ctx.llm.stream({
         provider: route.provider,
         model: route.model,
+        ...(route.reasoningEffort ? { reasoningEffort: route.reasoningEffort } : {}),
         messages,
         ...(input.system !== undefined ? { system: input.system } : {}),
         ...(input.tools !== undefined ? { tools: [...input.tools] } : {}),

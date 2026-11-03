@@ -54,13 +54,13 @@
 5. 不要启动 profile——只安装并验证，然后报告你改动了什么。
 ```
 
-安装完成后，在 Web 的 **loader 统一插件配置** 中配置各路由，并在 **设置 → 模型** 中标记要使用的模型。
+安装完成后，在 Web 的 **loader 统一插件配置** 中使用模型选择器选择提供商、模型与推理等级，并在 **设置 → 模型** 中标记要使用的模型。已保存的提供商与模型 ID 会自动迁移，清除选择后停用对应路由。
 
 ## 功能详解
 
 ### 视觉理解与 `inspect_image`
 
-先在「模型」页配置提供商与模型，再到 **视觉理解** 选择这对路由（写入 `vision.provider` / `vision.model`）。`tool.enabled` 独立控制 `inspect_image` 工具是否注册。
+先在「模型」页配置提供商与模型，再到 **视觉理解** 选择这对路由（配置保存为 `vision.selection`）。`tool.enabled` 独立控制 `inspect_image` 工具是否注册。
 
 ```yaml
 vision:
@@ -136,7 +136,7 @@ translation:
   model: deepseek-flash  # 官方 deepseek-official 模型目录中已有的 ID
 ```
 
-启用 `@deepseek-ai/dsh-experimental-cot-translation-bundle` 后，在官方翻译菜单选择「DeepSeek Flash · 官方 API」，再用本选项指定它实际调用的模型。此处固定使用官方 API 提供方，只修改模型 ID。Bing、Google、DeepSeek 账号翻译继续使用原实现。
+启用 `@deepseek-ai/dsh-experimental-cot-translation-bundle` 后，在官方翻译菜单选择「DeepSeek Flash · 官方 API」，再用本选项指定它实际调用的模型。翻译模型选择器仅显示官方 API 提供商的模型，思考由官方翻译服务关闭。Bing、Google、DeepSeek 账号翻译继续使用原实现。
 
 保留原生凭据、模型目录和运行状态检查，以及关闭思考、超时、取消、输出校验和会话持久化。配置关闭时使用官方默认 Flash；模型变更后的缓存与原模型隔离，审计记录写入实际模型。需要已配置的官方 API 凭据，接口调用仍按所选模型计费。辅助模型或翻译服务卸载后会取消进行中的覆盖请求并释放补丁。
 

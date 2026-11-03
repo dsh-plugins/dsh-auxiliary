@@ -60,7 +60,7 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
-    "@dsh-plugin/dsh-loader": "^2.0.0-0"
+    "@dsh-plugin/dsh-loader": "^2.0.0-dev.41570953193"
   },
   "peerDependenciesMeta": {},
   "devDependencies": {
@@ -84,7 +84,7 @@
     "@deepseek-ai/dsh-system-prompt": "^0.1.0-rc.8",
     "@deepseek-ai/dsh-timeout": "^0.1.0-rc.8",
     "@deepseek-ai/dsh-tools": "^0.1.0-rc.8",
-    "@dsh-plugin/dsh-loader": "2.0.0-dev.41037890182",
+    "@dsh-plugin/dsh-loader": "2.0.0-dev.41570953193",
     "@types/node": "^24.13.3",
     "@types/react": "~18.3.1",
     "@types/react-dom": "~18.2.25",

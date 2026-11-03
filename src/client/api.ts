@@ -1,9 +1,10 @@
-/** Model catalog metadata edits through the loader-normalized connection API. */
+/** 模型目录通过 loader 已适配的连接接口读写。 */
+import type { ConfigModelList } from '@dsh-plugin/dsh-loader/client';
 export interface SettingsNamespaceView { ns: string; value: unknown; user: unknown; base?: unknown; revision: number }
 interface RpcError { code: string; message: string; details?: unknown }
 interface RpcResponse<T> { result: { ok: true; value: T } | { ok: false; error: RpcError } }
 export interface IApiClient {
-  llm: { providers(input: object): Promise<RpcResponse<{ providers: Array<{ provider: string; displayName: string; settingsNs?: string }> }>> };
+  llm: { models(input: object): Promise<RpcResponse<ConfigModelList>>; providers(input: object): Promise<RpcResponse<{ providers: Array<{ provider: string; displayName: string; settingsNs?: string }> }>> };
   settings: {
     describe(input: object): Promise<RpcResponse<{ namespaces: SettingsNamespaceView[]; writable: boolean }>>;
     update(input: { ns: string; patch: unknown; expectedRevision?: number }): Promise<RpcResponse<SettingsNamespaceView>>;

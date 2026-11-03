@@ -7,6 +7,7 @@
  * @module dsh-auxiliary/config
  */
 import z from 'schemastery';
+import type { ReasoningEffortId } from '@deepseek-ai/dsh-llm';
 import { MAX_TIMER_DELAY_MS, deepFreeze } from './dsh.js';
 
 /**
@@ -50,6 +51,7 @@ const Config = z.object({
   vision: z.object({
     provider: z.string().description('Select an already-configured provider route for inspect_image.'),
     model: z.string().description('Select a model from the selected provider route for inspect_image.'),
+    reasoningEffort: z.string(),
     maxTokens: z.number().step(1).min(1).default(DEFAULT_VISION_MAX_TOKENS),
     handoff: z.boolean().default(true).description('When the main model is text-only, allow chat images as references and let it fetch their content via describe_image.'),
     skipWhenMainModelSupportsImage: z.boolean().default(false).description('When the session\'s main model already supports image input, do not inject the inspect_image/describe_image tools or their prompt guidance into that session.')
@@ -62,12 +64,14 @@ const Config = z.object({
   compact: z.object({
     enabled: z.boolean().default(false),
     provider: z.string(),
-    model: z.string()
+    model: z.string(),
+    reasoningEffort: z.string()
   }),
   approve: z.object({
     enabled: z.boolean().default(false).description('Route legacy approve-for-me or official Auto review calls to a dedicated model.'),
     provider: z.string(),
-    model: z.string()
+    model: z.string(),
+    reasoningEffort: z.string()
   }),
   translation: z.object({
     enabled: z.boolean().default(false).description('Override the model of the official API reasoning-translation service on dsh >= 0.2.1-rc.1.'),
@@ -76,17 +80,20 @@ const Config = z.object({
   subagent: z.object({
     enabled: z.boolean().default(false).description('Route every delegated child agent (subagent) to a dedicated provider/model pair.'),
     provider: z.string(),
-    model: z.string()
+    model: z.string(),
+    reasoningEffort: z.string()
   }),
   title: z.object({
     enabled: z.boolean().default(false).description('Route the session-title generation call (purpose: session-title) to a dedicated provider/model pair.'),
     provider: z.string(),
-    model: z.string()
+    model: z.string(),
+    reasoningEffort: z.string()
   }),
   imagegen: z.object({
     enabled: z.boolean().default(false).description('Route auxiliary image-generation work to a dedicated provider/model pair marked for image generation.'),
     provider: z.string(),
-    model: z.string()
+    model: z.string(),
+    reasoningEffort: z.string()
   }),
   engine: z.object({
     enabled: z.boolean().default(false),
@@ -105,6 +112,7 @@ export type PluginConfig = typeof Config extends z<infer T> ? T : never;
 
 /** Resolved selection for an existing vision-capable provider/model route. */
 export interface ResolvedVisionConfig {
+  readonly reasoningEffort?: ReasoningEffortId;
   readonly provider: string | undefined;
   readonly model: string | undefined;
   readonly maxTokens: number;
@@ -126,6 +134,7 @@ export interface ResolvedToolConfig {
 
 /** Resolved compaction-routing policy (auxiliary summarizer route). */
 export interface ResolvedCompactConfig {
+  readonly reasoningEffort?: ReasoningEffortId;
   readonly enabled: boolean;
   readonly provider: string;
   readonly model: string;
@@ -133,6 +142,7 @@ export interface ResolvedCompactConfig {
 
 /** Resolved approval-reviewer routing policy (@dsh-plugin/dsh-approve-for-me hookup). */
 export interface ResolvedApproveConfig {
+  readonly reasoningEffort?: ReasoningEffortId;
   readonly enabled: boolean;
   readonly provider: string | undefined;
   readonly model: string | undefined;
@@ -140,6 +150,7 @@ export interface ResolvedApproveConfig {
 
 /** Resolved subagent routing policy (dedicated model for delegated children). */
 export interface ResolvedSubagentConfig {
+  readonly reasoningEffort?: ReasoningEffortId;
   readonly enabled: boolean;
   readonly provider: string | undefined;
   readonly model: string | undefined;
@@ -147,6 +158,7 @@ export interface ResolvedSubagentConfig {
 
 /** Resolved session-title routing policy (dedicated title model). */
 export interface ResolvedTitleConfig {
+  readonly reasoningEffort?: ReasoningEffortId;
   readonly enabled: boolean;
   readonly provider: string | undefined;
   readonly model: string | undefined;
@@ -154,6 +166,7 @@ export interface ResolvedTitleConfig {
 
 /** Resolved auxiliary image-generation routing policy (dedicated generation model). */
 export interface ResolvedImagegenConfig {
+  readonly reasoningEffort?: ReasoningEffortId;
   readonly enabled: boolean;
   readonly provider: string | undefined;
   readonly model: string | undefined;
@@ -240,6 +253,7 @@ export function resolvePluginConfig(config: PluginConfig): ResolvedPluginConfig 
   return deepFreeze({
     vision: {
       provider: visionProvider,
+      ...(vision.reasoningEffort ? { reasoningEffort: vision.reasoningEffort as ReasoningEffortId } : {}),
       model: visionModel,
       maxTokens: vision.maxTokens ?? DEFAULT_VISION_MAX_TOKENS,
       handoff: vision.handoff ?? true,
@@ -253,27 +267,32 @@ export function resolvePluginConfig(config: PluginConfig): ResolvedPluginConfig 
     compact: {
       enabled: compact.enabled ?? false,
       provider: compactProvider,
+      ...(compact.reasoningEffort ? { reasoningEffort: compact.reasoningEffort as ReasoningEffortId } : {}),
       model: compactModel
     },
     approve: {
       enabled: approve.enabled ?? false,
       provider: approveProvider,
+      ...(approve.reasoningEffort ? { reasoningEffort: approve.reasoningEffort as ReasoningEffortId } : {}),
       model: approveModel
     },
     translation: { enabled: config.translation?.enabled ?? false, model: config.translation?.model?.trim() || 'deepseek-flash' },
     subagent: {
       enabled: subagent.enabled ?? false,
       provider: subagentProvider,
+      ...(subagent.reasoningEffort ? { reasoningEffort: subagent.reasoningEffort as ReasoningEffortId } : {}),
       model: subagentModel
     },
     title: {
       enabled: title.enabled ?? false,
       provider: titleProvider,
+      ...(title.reasoningEffort ? { reasoningEffort: title.reasoningEffort as ReasoningEffortId } : {}),
       model: titleModel
     },
     imagegen: {
       enabled: imagegen.enabled ?? false,
       provider: imagegenProvider,
+      ...(imagegen.reasoningEffort ? { reasoningEffort: imagegen.reasoningEffort as ReasoningEffortId } : {}),
       model: imagegenModel
     },
     engine: {

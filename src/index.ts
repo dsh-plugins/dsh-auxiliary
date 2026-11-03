@@ -12,7 +12,7 @@ import type { Context } from '@deepseek-ai/cordis';
 import type { HostAPI } from '@dsh-plugin/dsh-loader';
 import { officialModelIntegrations } from './compat.js';
 import { installOfficialTranslationModel } from './translation-router.js';
-import { createConfigTemplate } from './config-template.js';
+import { registerConfig, runtimeConfig } from './config-template.js';
 import { Config, PLUGIN_ID, PLUGIN_NAME, resolvePluginConfig, type PluginConfig, type ResolvedPluginConfig } from './config.js';
 import { registerVisionTool } from './vision-tool.js';
 import { registerImageHandoff } from './image-handoff.js';
@@ -57,8 +57,8 @@ export async function apply(ctx: Context, config: PluginConfig): Promise<void> {
   // 会话里反而把它隐藏掉。
   const resolveModelInfo = ctx.llm.resolveModelInfo.bind(ctx.llm);
 
-  const handle = await loader.config.register<PluginConfig>({ effect: fn => ctx.effect(() => fn() ?? (() => {})) }, createConfigTemplate(Config(config), loader.dshVersion));
-  let snapshot = handle.get().value;
+  const handle = await registerConfig(loader.config, { effect: fn => ctx.effect(() => fn() ?? (() => {})) }, Config(config), loader.dshVersion);
+  let snapshot = runtimeConfig(handle.get().value);
   const current = () => snapshot;
   let lastRaw: PluginConfig | undefined;
   let lastGood: ResolvedPluginConfig | undefined;
@@ -193,7 +193,7 @@ export async function apply(ctx: Context, config: PluginConfig): Promise<void> {
   }, 'dsh-auxiliary: vision tool, handoff, and approval-router lifecycle');
 
   handle.watch(({ value }) => {
-    snapshot = value;
+    snapshot = runtimeConfig(value);
     reconcileVisionTool();
     reconcileHandoff();
     reconcileApproveRouter();

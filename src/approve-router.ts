@@ -68,8 +68,8 @@ export function registerApproveRouter(ctx: Context, get: () => ResolvedPluginCon
     const approve = get().approve;
     if (approve.provider === undefined || approve.model === undefined) return next();
     if (!(target === 'official' ? isOfficialAutoReviewCall(options) : isApproveReviewCall(options))) return next();
-    if (options.provider === approve.provider && options.model === approve.model) return next();
-    const rewritten = deepFreeze({ ...options, provider: approve.provider, model: approve.model });
+    if (options.provider === approve.provider && options.model === approve.model && options.reasoningEffort === approve.reasoningEffort) { return next(); }
+    const rewritten = deepFreeze({ ...options, provider: approve.provider, model: approve.model, reasoningEffort: approve.reasoningEffort });
     active = true;
     try {
       return ctx.llm.stream(rewritten);

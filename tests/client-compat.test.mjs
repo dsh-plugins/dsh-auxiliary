@@ -23,7 +23,7 @@ for (const [version,inputTypes,reasoningLevels] of [
     describe:async()=>({result:{ok:true,value:{writable:true,namespaces:[{ns:'llm-pi-ai',revision:0,user:value,value,base:{}}]}}}),
     update:async args=>{writes.push(args);return {result:{ok:true,value:{ns:'llm-pi-ai',revision:1,user:value,value}}}},
   }};
-  mod.apply({effect:fn=>cleanups.push(fn()),locale:{register:()=>()=>{},bind:()=>key=>key},get:()=>({api}),dshLoaderUi:{onDomSettled:fn=>{wake=fn;return()=>{disposed=true}}}});
+  mod.apply({effect:fn=>cleanups.push(fn()),locale:{register:()=>()=>{},bind:()=>key=>key},get:()=>({api}),dshLoaderUi:{config:{registerDialog(){}},onDomSettled:fn=>{wake=fn;return()=>{disposed=true}}}});
   for(let i=0;i<100&&!window.document.querySelector('[data-dsh-aux-capabilities]');i++)await delay(10);
   assert(window.document.querySelector('[data-dsh-aux-capabilities]'),'catalog augmentation is mounted');
   assert.equal(window.document.querySelectorAll('[data-dsh-aux-image-input]').length>0,inputTypes);

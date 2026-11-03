@@ -1,18 +1,50 @@
 import { officialModelIntegrations } from './compat.js';
-import { defineConfig, type ConfigField } from '@dsh-plugin/dsh-loader/config';
-import { DEFAULT_COMPRESS_PROMPT, PLUGIN_ID, PLUGIN_NAME, type PluginConfig } from './config.js';
+import { defineConfig, validateValues, type ConfigAPI, type ConfigField, type ConfigModelValue } from '@dsh-plugin/dsh-loader/config';
+import { Config, DEFAULT_COMPRESS_PROMPT, PLUGIN_ID, PLUGIN_NAME, type PluginConfig } from './config.js';
 
+const routeKeys = ['vision', 'compact', 'approve', 'subagent', 'title', 'imagegen'] as const;
+type RouteKey = typeof routeKeys[number];
+
+/** 配置表单保存完整模型选择，运行时仍使用各功能原有的路由结构。 */
+export type FormConfig = Omit<PluginConfig, RouteKey | 'translation'> & {
+  [Key in RouteKey]: Omit<PluginConfig[Key], 'provider' | 'model' | 'reasoningEffort'> & { selection: ConfigModelValue | null };
+} & { translation: { enabled: boolean; selection: ConfigModelValue | null } };
+
+function selectionOf(route: { provider?: string; model?: string; reasoningEffort?: string }): ConfigModelValue | null {
+  if (!route.provider && !route.model) { return null; }
+  if (!route.provider || !route.model) { throw new Error('辅助模型的提供商与模型必须同时配置'); }
+  return { provider: route.provider, model: route.model, ...(route.reasoningEffort ? { reasoningEffort: route.reasoningEffort } : {}) };
+}
+
+/** 将表单中的选择转换为功能调用使用的模型路由。 */
+export function runtimeConfig(value: FormConfig): PluginConfig {
+  const config: any = { ...value };
+  for (const key of routeKeys) {
+    const { selection, ...options } = value[key];
+    config[key] = { ...options, provider: selection?.provider ?? '', model: selection?.model ?? '',
+      ...(selection?.reasoningEffort ? { reasoningEffort: selection.reasoningEffort } : {}) };
+  }
+  const translation = value.translation?.selection;
+  if (translation && (translation.provider !== 'deepseek-official' || translation.reasoningEffort !== undefined)) {
+    throw new Error('思考过程翻译仅支持官方 API 模型，并由官方翻译服务关闭思考');
+  }
+  config.translation = { enabled: value.translation?.enabled ?? false, model: translation?.model ?? 'deepseek-flash' };
+  return Config(config);
+}
+
+/** 为辅助功能声明模型选择器及其他配置字段。 */
 export function createConfigTemplate(base: PluginConfig, dshVersion?: string) {
   const route = (enabled = true): ConfigField[] => [
     ...(enabled ? [{ type: 'boolean' as const, key: 'enabled', label: '启用', default: false }] : []),
-    { type: 'text', key: 'provider', label: '提供方 ID', default: '', description: '填写官方模型设置中已有的提供方路由 ID。' },
-    { type: 'text', key: 'model', label: '模型 ID', default: '' },
+    { type: 'model', key: 'selection', label: '模型', default: null },
   ];
   const object = (key: string, label: string, fields: ConfigField[]): ConfigField => ({ type: 'object', key, label, fields: fields.map(field => {
-    const value = (base as any)[key]?.[field.key!];
+    const value = field.key === 'selection'
+      ? selectionOf(key === 'translation' ? { provider: 'deepseek-official', model: base.translation?.model } : (base as any)[key])
+      : (base as any)[key]?.[field.key!];
     return value === undefined ? field : { ...field, default: value };
   }) });
-  return defineConfig({ id: PLUGIN_ID, packageName: PLUGIN_NAME, title: '辅助模型', description: '填写已配置的提供方与模型 ID；保存后应用到后续请求。', fields: [
+  return defineConfig({ id: PLUGIN_ID, packageName: PLUGIN_NAME, title: '辅助模型', description: '选择已配置的提供商、模型与推理等级，保存后应用到后续请求。', fields: [
     object('vision', '视觉模型', [...route(false),
       { type: 'number', key: 'maxTokens', label: '输出上限', default: 4096, min: 1 },
       { type: 'boolean', key: 'handoff', label: '图片转交', default: true },
@@ -26,7 +58,7 @@ export function createConfigTemplate(base: PluginConfig, dshVersion?: string) {
     object('compact', '压缩模型', route()), object('approve', officialModelIntegrations(dshVersion).autoReview ? '官方自动审查模型' : '审查模型', route()),
     ...(officialModelIntegrations(dshVersion).translation ? [object('translation', '思考过程机器翻译', [
       { type: 'boolean', key: 'enabled', label: '替换翻译模型', default: false },
-      { type: 'text', key: 'model', label: '官方 API 模型 ID', default: 'deepseek-flash', required: true, description: '仅作用于 DeepSeek Flash · 官方 API 翻译服务；填写该官方提供方模型目录中已有的 ID。保留关闭思考、会话记录及缓存隔离。' },
+      { type: 'model', key: 'selection', label: '官方 API 翻译模型', default: null, dialog: { id: 'translation-model', label: '选择翻译模型' }, description: '从官方 API 目录选择翻译模型，思考由官方翻译服务关闭。清除选择时使用官方默认模型。' },
     ])] : []),
     object('subagent', '子智能体模型', route()), object('title', '标题模型', route()), object('imagegen', '图片生成模型', route()),
     object('engine', '压缩引擎', [
@@ -40,4 +72,39 @@ export function createConfigTemplate(base: PluginConfig, dshVersion?: string) {
       { type: 'textarea', key: 'compressPrompt', label: '压缩指令', default: DEFAULT_COMPRESS_PROMPT },
     ]),
   ] });
+}
+
+/** 读取旧的提供商与模型字段，迁移后只保存模型选择器使用的 selection。 */
+export async function registerConfig(api: ConfigAPI, owner: { effect(fn: () => (() => void) | void): unknown }, base: PluginConfig, dshVersion?: string) {
+  const template = createConfigTemplate(base, dshVersion);
+  const legacyFields: ConfigField[] = ['provider', 'model', 'reasoningEffort'].map(key => ({
+    type: 'text', key, label: key, default: '', visibleWhen: { path: ['tool', 'enabled'], equals: null },
+  }));
+  const reader = await api.register<any>(owner, { ...template, fields: template.fields.map(field => {
+    if (field.type !== 'object' || !field.fields?.some(child => child.type === 'model')) { return field; }
+    return { ...field, fields: [
+      ...field.fields.map(child => child.type === 'model' ? { ...child, default: null } : child),
+      ...legacyFields.filter(child => field.key !== 'translation' || child.key === 'model'),
+    ] };
+  }) });
+  let snapshot;
+  try { snapshot = reader.get(); } finally { reader.dispose(); }
+  const migrated: Record<string, any> = {};
+  for (const key of [...routeKeys, 'translation']) {
+    const route = snapshot.value[key];
+    if (!route?.provider && !route?.model && !route?.reasoningEffort) { continue; }
+    const old = key === 'translation' ? { provider: 'deepseek-official', model: route.model } : route;
+    if (!old.provider || !old.model) { throw new Error('辅助模型的提供商与模型必须同时配置'); }
+    route.selection ??= selectionOf(old);
+    migrated[key] = route;
+  }
+  const handle = await api.register<FormConfig>(owner, template);
+  if (Object.keys(migrated).length > 0) {
+    try {
+      const value = validateValues(template.fields, { ...handle.get().value, ...migrated }) as unknown as FormConfig;
+      runtimeConfig(value);
+      await handle.update(value, snapshot.revision);
+    } catch (error) { handle.dispose(); throw error; }
+  }
+  return handle;
 }

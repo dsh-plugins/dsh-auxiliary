@@ -12,15 +12,15 @@
  * @module dsh-auxiliary/compact-router
  */
 import type { Context } from '@deepseek-ai/cordis';
-import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm';
+import type { GenerateOptions, StreamChunk, ReasoningEffortId } from '@deepseek-ai/dsh-llm';
 import { deepFreeze } from './dsh.js';
 import type { ResolvedPluginConfig } from './config.js';
 
 /** The configured auxiliary summarizer route, or undefined when routing is off. */
-export function compactRoute(get: () => ResolvedPluginConfig): { provider: string; model: string } | undefined {
+export function compactRoute(get: () => ResolvedPluginConfig): { provider: string; model: string; reasoningEffort?: ReasoningEffortId } | undefined {
   const compact = get().compact;
   if (!compact.enabled || compact.provider.length === 0 || compact.model.length === 0) return undefined;
-  return { provider: compact.provider, model: compact.model };
+  return { provider: compact.provider, model: compact.model, ...(compact.reasoningEffort ? { reasoningEffort: compact.reasoningEffort } : {}) };
 }
 
 /**
@@ -33,8 +33,8 @@ export function installCompactRouter(ctx: Context, get: () => ResolvedPluginConf
     if (options.purpose !== 'compaction') return next();
     const route = compactRoute(get);
     if (route === undefined) return next();
-    if (options.provider === route.provider && options.model === route.model) return next();
-    const rerouted = deepFreeze({ ...options, provider: route.provider, model: route.model });
+    if (options.provider === route.provider && options.model === route.model && options.reasoningEffort === route.reasoningEffort) { return next(); }
+    const rerouted = deepFreeze({ ...options, provider: route.provider, model: route.model, reasoningEffort: route.reasoningEffort });
     return ctx.llm.stream(rerouted);
   });
 }

@@ -53,11 +53,12 @@ export function registerSubagentRouter(ctx: Context, get: () => ResolvedPluginCo
     if (dsh().subagent.delegationDepthOf(agent) <= 0) return;
     const subagent = get().subagent;
     if (!subagent.enabled || subagent.provider === undefined || subagent.model === undefined) return;
-    const { provider, model } = subagent;
     agent.ctx.on('agent/request', async (_payload, next) => {
       const config = await next();
-      if (config.provider === provider && config.model === model) return config;
-      return { ...config, provider, model };
+      const route = get().subagent;
+      if (!route.enabled || route.provider === undefined || route.model === undefined) { return config; }
+      if (config.provider === route.provider && config.model === route.model && config.reasoningEffort === route.reasoningEffort) { return config; }
+      return { ...config, provider: route.provider, model: route.model, reasoningEffort: route.reasoningEffort };
     });
   };
 

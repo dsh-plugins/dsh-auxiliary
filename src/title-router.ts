@@ -19,15 +19,15 @@
  * @module dsh-auxiliary/title-router
  */
 import type { Context } from '@deepseek-ai/cordis';
-import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm';
+import type { GenerateOptions, StreamChunk, ReasoningEffortId } from '@deepseek-ai/dsh-llm';
 import { deepFreeze } from './dsh.js';
 import type { ResolvedPluginConfig } from './config.js';
 
 /** The configured title route, or undefined when routing is off. */
-export function titleRoute(get: () => ResolvedPluginConfig): { provider: string; model: string } | undefined {
+export function titleRoute(get: () => ResolvedPluginConfig): { provider: string; model: string; reasoningEffort?: ReasoningEffortId } | undefined {
   const title = get().title;
   if (!title.enabled || title.provider === undefined || title.model === undefined) return undefined;
-  return { provider: title.provider, model: title.model };
+  return { provider: title.provider, model: title.model, ...(title.reasoningEffort ? { reasoningEffort: title.reasoningEffort } : {}) };
 }
 
 /**
@@ -40,8 +40,8 @@ export function installTitleRouter(ctx: Context, get: () => ResolvedPluginConfig
     if (options.purpose !== 'session-title') return next();
     const route = titleRoute(get);
     if (route === undefined) return next();
-    if (options.provider === route.provider && options.model === route.model) return next();
-    const rerouted = deepFreeze({ ...options, provider: route.provider, model: route.model });
+    if (options.provider === route.provider && options.model === route.model && options.reasoningEffort === route.reasoningEffort) { return next(); }
+    const rerouted = deepFreeze({ ...options, provider: route.provider, model: route.model, reasoningEffort: route.reasoningEffort });
     return ctx.llm.stream(rerouted);
   });
 }
