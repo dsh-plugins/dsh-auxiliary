@@ -4,7 +4,7 @@
 
 # dsh-auxiliary
 
-**DeepSeek Harness 辅助模型插件：为视觉理解、上下文压缩、审批审查、子代理、会话标题与图片生成提供独立的模型路由、工具与系统提示，全程不触碰主对话模型。**
+**DeepSeek Harness 辅助模型插件：为视觉理解、上下文压缩、审批审查、会话标题与图片生成提供独立的模型路由、工具与系统提示，全程不触碰主对话模型。**
 
 [English](README.md) | 简体中文
 
@@ -21,7 +21,7 @@
 
 </div>
 
-`dsh-auxiliary` 是一个 [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) 插件，在 harness 的 LLM 抽象层（`ctx.llm`）之上叠加辅助模型能力。它从不替换主对话模型：每个功能都是独立、可选的模型路由，只在自己的那类调用上生效——把昂贵或专门的活儿（视觉、压缩摘要、审批审查、委派子代理、会话标题、图片生成）交给各自合适的模型。
+`dsh-auxiliary` 是一个 [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) 插件，在 harness 的 LLM 抽象层（`ctx.llm`）之上叠加辅助模型能力。它从不替换主对话模型：每个功能都是独立、可选的模型路由，只在自己的那类调用上生效——把昂贵或专门的活儿（视觉、压缩摘要、审批审查、会话标题、图片生成）交给各自合适的模型。
 
 ## 功能总览
 
@@ -32,7 +32,6 @@
 | 上下文压缩 | 摘要调用（`purpose: 'compaction'`）使用独立模型 | 插件配置 → **上下文压缩** |
 | 压缩引擎（可选） | 用显式压缩提示词替换默认压缩后端 | 配置中的 `engine.enabled` |
 | 审批模型 | @dsh-plugin/dsh-approve-for-me 的审查使用独立模型 | 插件配置 → **审批模型** |
-| 子代理模型 | 委派子代理使用独立模型 | 插件配置 → **子代理模型** |
 | 标题生成模型 | 会话标题（`purpose: 'session-title'`）使用独立模型 | 插件配置 → **标题生成模型** |
 | 生图辅助模型 | `generate_image` 工具：经 OpenAI 兼容 images API 生成图片 | 插件配置 → **生图辅助模型** |
 | 模型能力标记 | 自定义 `llm-pi-ai` 模型上的复选框：**允许图片输入** / **允许图片生成** | 「模型」页 → 提供商 → 自定义设置 → 模型目录 |
@@ -145,16 +144,11 @@ translation:
 
 旧配置省略 `provider` 时继续使用 `deepseek-official`。清除选择或关闭替换时恢复官方默认 Flash。缓存按提供商与模型隔离，同名模型不会混用结果；调用记录包含实际提供商与模型。辅助模型或翻译服务卸载后会取消进行中的覆盖请求。
 
-### 子代理模型
+### 子智能体模型
 
-```yaml
-subagent:
-  enabled: true
-  provider: anvilcraft-ai
-  model: deepseek-chat
-```
+从 `0.1.2-alpha.2` 起，DSH 内置子智能体模型授权。请在「内置插件配置 → 子智能体」中启用「允许 Agent 为子智能体选择模型」，选择允许使用的模型并保存。
 
-子代理默认继承父会话的模型路由。开启此功能且路由完整时，所有委派子代理——一次性 spawn/fork 委托、可续接子代理（含进程内冷恢复）——统一使用所选模型。插件监听 `agent/created`，对委派深度 > 0 的代理在其自身作用域上下文中安装 `agent/request` waterfall 监听；返回替换后的 `LlmCallConfig` 是 loop 官方的"切换"契约，变更的头快照与其他模型切换一样被记录。远程提供方（ACP）创建的子代理不经过本机代理注册，仍继承父会话。建议选择便宜快速的模型控制委派成本。此功能不需要任何外部插件。
+auxiliary 在该版本及以后不再提供「子智能体模型」设置，也不再覆盖子智能体的模型路由。已有配置中的 `subagent` 值会被忽略，避免覆盖内置授权下的模型选择。当前 loader 支持的 DSH 版本均在此范围内。
 
 ### 标题生成模型
 
@@ -242,10 +236,6 @@ harness 的 LLM 抽象只处理文本，因此生图直接对话提供商的 **O
       enabled: false                       # 为 @dsh-plugin/dsh-approve-for-me 的审查提供独立模型
       provider: ""                         # 示例：deepseek-official（已注册的提供商路由 id）
       model: ""                            # 示例：deepseek-chat（该提供商下的模型 id）
-    subagent:
-      enabled: false                       # 把委派子代理路由到独立模型
-      provider: ""                         # 示例：deepseek-official
-      model: ""                            # 示例：deepseek-chat
     title:
       enabled: false                       # 把会话标题调用路由到独立模型
       provider: ""                         # 示例：deepseek-official

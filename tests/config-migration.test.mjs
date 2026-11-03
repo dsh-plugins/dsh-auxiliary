@@ -50,11 +50,12 @@ test('旧路由迁移后保持实际模型和选项，清除选择和重新加�
   );
   assert.equal(handle.get().revision, 4);
   let config = resolvePluginConfig(runtimeConfig(handle.get().value));
-  for (const key of keys) {
+  for (const key of keys.filter(key => key !== 'subagent')) {
     assert.equal(config[key].provider, 'foo');
     assert.equal(config[key].model, key);
     assert.equal(config[key].reasoningEffort, 'high');
   }
+  assert.equal(config.subagent.enabled, false);
   assert.equal(config.vision.maxTokens, 1234);
   assert.equal(config.translation.provider, 'deepseek-official');
   assert.equal(config.translation.model, 'example');

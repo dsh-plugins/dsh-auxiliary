@@ -12,6 +12,18 @@ export function legacyModelEditors(version?: string): { inputTypes: boolean; rea
   return { inputTypes: before(1, 7, 1), reasoningLevels: before(2, 1, 1) };
 }
 
+/** 旧子智能体路由只在宿主尚未提供模型授权时启用，避免覆盖原生选择。 */
+export function legacySubagentModels(version?: string): boolean {
+  const match = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/.exec(version ?? '');
+  if (!match) { return false; }
+  const current = [+match[1], +match[2], +match[3]], target = [0, 1, 2];
+  for (let index = 0; index < 3; index++) {
+    if (current[index] !== target[index]) { return current[index] < target[index]; }
+  }
+  const [kind, number] = match[4]?.split('.') ?? [];
+  return kind === 'alpha' && /^(0|[1-9]\d*)$/.test(number ?? '') && Number(number) < 2;
+}
+
 /** The two official integrations are enabled from these releases, inclusive. */
 export function officialModelIntegrations(version?: string): { autoReview: boolean; translation: boolean } {
   const match = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/.exec(version ?? '');

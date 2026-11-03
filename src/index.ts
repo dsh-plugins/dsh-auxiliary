@@ -10,7 +10,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis';
 import type { HostAPI } from '@dsh-plugin/dsh-loader';
-import { officialModelIntegrations } from './compat.js';
+import { legacySubagentModels, officialModelIntegrations } from './compat.js';
 import { installOfficialTranslationModel } from './translation-router.js';
 import { registerConfig, runtimeConfig } from './config-template.js';
 import { Config, PLUGIN_ID, PLUGIN_NAME, resolvePluginConfig, type PluginConfig, type ResolvedPluginConfig } from './config.js';
@@ -58,7 +58,7 @@ export async function apply(ctx: Context, config: PluginConfig): Promise<void> {
   const resolveModelInfo = ctx.llm.resolveModelInfo.bind(ctx.llm);
 
   const handle = await registerConfig(loader.config, { effect: fn => ctx.effect(() => fn() ?? (() => {})) }, Config(config), loader.dshVersion);
-  let snapshot = runtimeConfig(handle.get().value);
+  let snapshot = runtimeConfig(handle.get().value, loader.dshVersion);
   const current = () => snapshot;
   let lastRaw: PluginConfig | undefined;
   let lastGood: ResolvedPluginConfig | undefined;
@@ -137,7 +137,7 @@ export async function apply(ctx: Context, config: PluginConfig): Promise<void> {
   };
   const reconcileSubagentRouter = (): void => {
     const subagent = resolved().subagent;
-    if (subagent.enabled && subagent.provider !== undefined && subagent.model !== undefined) {
+    if (legacySubagentModels(loader.dshVersion) && subagent.enabled && subagent.provider !== undefined && subagent.model !== undefined) {
       if (subagentRouterDisposer === undefined) {
         subagentRouterDisposer = registerSubagentRouter(ctx, resolved);
       }
@@ -193,7 +193,7 @@ export async function apply(ctx: Context, config: PluginConfig): Promise<void> {
   }, 'dsh-auxiliary: vision tool, handoff, and approval-router lifecycle');
 
   handle.watch(({ value }) => {
-    snapshot = runtimeConfig(value);
+    snapshot = runtimeConfig(value, loader.dshVersion);
     reconcileVisionTool();
     reconcileHandoff();
     reconcileApproveRouter();

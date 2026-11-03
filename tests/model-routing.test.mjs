@@ -78,7 +78,7 @@ test('已创建的子代理按下一次请求读取更新后的模型与推理�
     llm: { deepFreeze: (value) => value }
   });
   t.after(clearDshFacade);
-  const value = defaultsFor(createConfigTemplate(Config({})).fields);
+  const value = defaultsFor(createConfigTemplate(Config({}), '0.1.1-rc.2').fields);
   value.subagent = {
     enabled: true,
     selection: { provider: 'foo', model: 'example', reasoningEffort: 'high' }
@@ -91,7 +91,7 @@ test('已创建的子代理按下一次请求读取更新后的模型与推理�
         return () => {};
       }
     },
-    () => resolvePluginConfig(runtimeConfig(value))
+    () => resolvePluginConfig(runtimeConfig(value, '0.1.1-rc.2'))
   );
   created({
     agent: {

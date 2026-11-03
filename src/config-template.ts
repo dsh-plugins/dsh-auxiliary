@@ -1,4 +1,4 @@
-import { officialModelIntegrations } from './compat.js';
+import { legacySubagentModels, officialModelIntegrations } from './compat.js';
 import { defineConfig, validateValues, type ConfigAPI, type ConfigField, type ConfigModelValue } from '@dsh-plugin/dsh-loader/config';
 import { Config, DEFAULT_COMPRESS_PROMPT, PLUGIN_ID, PLUGIN_NAME, type PluginConfig } from './config.js';
 
@@ -7,8 +7,11 @@ type RouteKey = typeof routeKeys[number];
 
 /** 配置表单保存完整模型选择，运行时仍使用各功能原有的路由结构。 */
 export type FormConfig = Omit<PluginConfig, RouteKey | 'translation'> & {
-  [Key in RouteKey]: Omit<PluginConfig[Key], 'provider' | 'model' | 'reasoningEffort'> & { selection: ConfigModelValue | null };
-} & { translation: { enabled: boolean; selection: ConfigModelValue | null } };
+  [Key in Exclude<RouteKey, 'subagent'>]: Omit<PluginConfig[Key], 'provider' | 'model' | 'reasoningEffort'> & { selection: ConfigModelValue | null };
+} & {
+  subagent?: Omit<PluginConfig['subagent'], 'provider' | 'model' | 'reasoningEffort'> & { selection: ConfigModelValue | null };
+  translation: { enabled: boolean; selection: ConfigModelValue | null };
+};
 
 function selectionOf(route: { provider?: string; model?: string; reasoningEffort?: string }): ConfigModelValue | null {
   if (!route.provider && !route.model) { return null; }
@@ -17,10 +20,11 @@ function selectionOf(route: { provider?: string; model?: string; reasoningEffort
 }
 
 /** 将表单中的选择转换为功能调用使用的模型路由。 */
-export function runtimeConfig(value: FormConfig): PluginConfig {
+export function runtimeConfig(value: FormConfig, dshVersion?: string): PluginConfig {
   const config: any = { ...value };
   for (const key of routeKeys) {
-    const { selection, ...options } = value[key];
+    const route = key === 'subagent' && !legacySubagentModels(dshVersion) ? undefined : value[key];
+    const { selection, ...options } = route ?? { enabled: false, selection: null };
     config[key] = { ...options, provider: selection?.provider ?? '', model: selection?.model ?? '',
       ...(selection?.reasoningEffort ? { reasoningEffort: selection.reasoningEffort } : {}) };
   }
@@ -60,7 +64,8 @@ export function createConfigTemplate(base: PluginConfig, dshVersion?: string) {
       { type: 'boolean', key: 'enabled', label: '替换翻译模型', default: false },
       { type: 'model', key: 'selection', label: '翻译模型', default: null, dialog: { id: 'translation-model', label: '选择翻译模型' }, description: '从已配置的提供商选择翻译模型，通过翻译菜单中的「DeepSeek Flash · 官方 API」入口使用。第三方模型使用默认推理设置；清除选择时使用官方默认模型。' },
     ])] : []),
-    object('subagent', '子智能体模型', route()), object('title', '标题模型', route()), object('imagegen', '图片生成模型', route()),
+    ...(legacySubagentModels(dshVersion) ? [object('subagent', '子智能体模型', route())] : []),
+    object('title', '标题模型', route()), object('imagegen', '图片生成模型', route()),
     object('engine', '压缩引擎', [
       { type: 'boolean', key: 'enabled', label: '启用', default: false },
       { type: 'number', key: 'thresholdRatio', label: '触发比例', default: 0.8, min: 0.01, max: 0.99 },
@@ -91,6 +96,7 @@ export async function registerConfig(api: ConfigAPI, owner: { effect(fn: () => (
   try { snapshot = reader.get(); } finally { reader.dispose(); }
   const migrated: Record<string, any> = {};
   for (const key of [...routeKeys, 'translation']) {
+    if (key === 'subagent' && !legacySubagentModels(dshVersion)) { continue; }
     const route = snapshot.value[key];
     if (!route?.provider && !route?.model && !route?.reasoningEffort) { continue; }
     const old = key === 'translation' ? { provider: route.provider || 'deepseek-official', model: route.model } : route;
@@ -102,7 +108,7 @@ export async function registerConfig(api: ConfigAPI, owner: { effect(fn: () => (
   if (Object.keys(migrated).length > 0) {
     try {
       const value = validateValues(template.fields, { ...handle.get().value, ...migrated }) as unknown as FormConfig;
-      runtimeConfig(value);
+      runtimeConfig(value, dshVersion);
       await handle.update(value, snapshot.revision);
     } catch (error) { handle.dispose(); throw error; }
   }

@@ -4,7 +4,7 @@
 
 # dsh-auxiliary
 
-**Auxiliary models for DeepSeek Harness — dedicated model routes, tools, and system guidance for vision, compaction, reviews, subagents, titles, and image generation, without touching the main conversation model.**
+**Auxiliary models for DeepSeek Harness — dedicated model routes, tools, and system guidance for vision, compaction, reviews, titles, and image generation, without touching the main conversation model.**
 
 English | [简体中文](README.zh_CN.md)
 
@@ -21,7 +21,7 @@ English | [简体中文](README.zh_CN.md)
 
 </div>
 
-`dsh-auxiliary` is a [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) plugin that layers auxiliary-model capabilities on the harness LLM seam (`ctx.llm`). It never replaces the main conversation model: each feature is an independent, optional route that kicks in only for its own narrow call category, so you can give expensive or specialized work (vision, compaction summaries, approval reviews, delegated subagents, session titles, image generation) its own cheap or capable model.
+`dsh-auxiliary` is a [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) plugin that layers auxiliary-model capabilities on the harness LLM seam (`ctx.llm`). It never replaces the main conversation model: each feature is an independent, optional route that kicks in only for its own narrow call category, so you can give expensive or specialized work (vision, compaction summaries, approval reviews, session titles, image generation) its own cheap or capable model.
 
 ## Feature overview
 
@@ -32,7 +32,6 @@ English | [简体中文](README.zh_CN.md)
 | Context compaction | Summaries (`purpose: 'compaction'`) use a dedicated model | Plugin configuration → **Context compaction** |
 | Compression engine *(optional)* | Replaces the compaction backend with an explicit compression prompt | `engine.enabled` in the config |
 | Approval model | Reviews from @dsh-plugin/dsh-approve-for-me use a dedicated model | Plugin configuration → **Approval model** |
-| Subagent model | Delegated child agents use a dedicated model | Plugin configuration → **Subagent model** |
 | Title model | Session titles (`purpose: 'session-title'`) use a dedicated model | Plugin configuration → **Title model** |
 | Image-generation model | `generate_image` tool: create images through an OpenAI-compatible images API | Plugin configuration → **Image-generation model** |
 | Model capability marks | Checkboxes on your own `llm-pi-ai` models: version-gated **Allow image input** / **Allow image generation** | Models page → provider → customized settings → model |
@@ -148,16 +147,11 @@ translation:
 
 旧配置省略 `provider` 时继续使用 `deepseek-official`。清除选择或关闭替换时恢复官方默认 Flash。缓存按提供商与模型隔离，同名模型不会混用结果；调用记录包含实际提供商与模型。辅助模型或翻译服务卸载后会取消进行中的覆盖请求。
 
-### Subagent model
+### 子智能体模型
 
-```yaml
-subagent:
-  enabled: true
-  provider: anvilcraft-ai
-  model: deepseek-chat
-```
+从 `0.1.2-alpha.2` 起，DSH 内置子智能体模型授权。请在「内置插件配置 → 子智能体」中启用「允许 Agent 为子智能体选择模型」，选择允许使用的模型并保存。
 
-Child agents inherit their parent's route by default. With this feature enabled and a complete route, every delegated child — one-shot spawn/fork runs and continuable children, including cold-resumed ones — is routed to the selected pair. The plugin listens for `agent/created` and, for agents with delegation depth > 0, installs an `agent/request` waterfall listener on the agent's own scoped context; returning a replacement `LlmCallConfig` is the loop's official "switch" contract, so the changed header snapshot is logged like any other model switch. Remote providers (ACP) never register a process-local agent and their children keep inheriting the parent route. Prefer a cheap, fast model to control delegation cost. No external plugin required.
+auxiliary 在该版本及以后不再提供「子智能体模型」设置，也不再覆盖子智能体的模型路由。已有配置中的 `subagent` 值会被忽略，避免覆盖内置授权下的模型选择。当前 loader 支持的 DSH 版本均在此范围内。
 
 ### Title model
 
@@ -245,10 +239,6 @@ The Cordis row below can seed initial defaults. Subsequent changes use config-ap
       enabled: false                       # give @dsh-plugin/dsh-approve-for-me's reviews a dedicated model
       provider: ""                         # e.g. deepseek-official (a registered provider route id)
       model: ""                            # e.g. deepseek-chat (a model id on that provider)
-    subagent:
-      enabled: false                       # route delegated subagents to a dedicated model
-      provider: ""                         # e.g. deepseek-official
-      model: ""                            # e.g. deepseek-chat
     title:
       enabled: false                       # route session-title calls to a dedicated model
       provider: ""                         # e.g. deepseek-official
@@ -272,7 +262,7 @@ The Cordis row below can seed initial defaults. Subsequent changes use config-ap
 
 Requires Node.js 24.9+ and dsh-loader 2.x. Supports its six explicit release families: `0.1.5`, `0.1.6`, `0.1.7`, `0.2.0`, `0.2.1`, `0.2.2`, including prereleases. Before `0.1.6-alpha.2`, use **Settings → Plugin configuration**; from that release, use the plugin detail page.
 
-One collapsed plugin card groups vision, compaction, approval, subagent, title, image generation and compression engine settings. Enter provider/model route IDs already configured in the official Models page. Saved changes apply to subsequent requests; hidden fields keep their values.
+One collapsed plugin card groups vision, compaction, approval, title, image generation and compression engine settings. Enter provider/model route IDs already configured in the official Models page. Saved changes apply to subsequent requests; hidden fields keep their values.
 
 Preferences live at `<profile>/config/dsh-auxiliary/config.json`. The old 1.x `dsh-auxiliary` settings namespace is not automatically imported: copy values manually. Cordis row configuration seeds defaults on first registration; an existing file takes precedence. Manual edits require a plugin reload or restart.
 

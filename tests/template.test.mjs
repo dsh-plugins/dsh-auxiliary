@@ -37,6 +37,25 @@ test('翻译模型保存第三方提供商，清除选择后恢复官方默认�
   assert.equal(cleared.translation.model, 'deepseek-flash');
 });
 
+test('子智能体模型使用对应宿主版本的选择方式，其他辅助路由保持可用', () => {
+  for (const [version, legacy] of [
+    ['0.1.1-rc.2', true], ['0.1.2-alpha.1', true],
+    ['0.1.2-alpha.2', false], ['0.1.2-alpha.2+build.1', false], ['0.1.2-beta.1', false],
+    ['0.1.2-rc.1', false], ['0.1.2', false], ['0.1.5-alpha.1', false],
+    ['0.2.1-rc.5', false], ['0.2.2-alpha.3', false], [undefined, false], ['bad', false],
+  ]) {
+    const base = Config({ title: { enabled: true, provider: 'foo', model: 'title' }, subagent: { enabled: true, provider: 'foo', model: 'child' } });
+    const value = defaultsFor(createConfigTemplate(base, version).fields);
+    assert.equal(value.subagent !== undefined, legacy, version);
+    value.subagent = { enabled: true, selection: { provider: 'foo', model: 'child' } };
+    const configured = runtimeConfig(value, version);
+    assert.equal(configured.subagent.enabled, legacy, version);
+    assert.equal(configured.subagent.model, legacy ? 'child' : '', version);
+    assert.equal(configured.title.provider, 'foo');
+    assert.equal(configured.title.model, 'title');
+  }
+});
+
 test('部署路由缺少提供商或模型时报告配置错误', () => {
   for (const vision of [{ provider: 'foo' }, { model: 'example' }]) {
     assert.throws(() => createConfigTemplate(Config({ vision })), /必须同时配置/);

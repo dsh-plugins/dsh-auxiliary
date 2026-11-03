@@ -79,7 +79,7 @@ const Config = z.object({
     model: z.string().default('deepseek-flash')
   }),
   subagent: z.object({
-    enabled: z.boolean().default(false).description('Route every delegated child agent (subagent) to a dedicated provider/model pair.'),
+    enabled: z.boolean().default(false).description('仅在 dsh < 0.1.2-alpha.2 时为子智能体选择固定模型；后续版本使用内置模型授权。'),
     provider: z.string(),
     model: z.string(),
     reasoningEffort: z.string()
