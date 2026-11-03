@@ -71,9 +71,9 @@ node scripts/test-migrations.mjs --version=0.2.2-alpha.2 --keep
 
 - approve-for-me 的市场支持范围缩小为 `[0.1.5,0.1.7-rc.2)`，宿主和浏览器入口在上限版本起跳过旧逻辑。
 - `approve` 在上限版本起识别官方 `REVIEW_POLICY` / `ENVIRONMENT` 审查请求，保留策略、消息、温度、信号和会话归属；不修改裁决。
-- 新翻译选项仅作用于 `deepseek-official` 服务中已有的模型 ID，保留原生凭据和模型资格检查。官方 Flash 占位模型只在单次调用的局部视图内映射，不更改全局模型目录。
-- 缓存查询与会话 request 记录使用同一个包含所选模型的 recipe，审计元数据保留实际 prepared model；换模型不复用旧缓存。
-- `node scripts/test-official-contracts.mjs` 加载了真实 npm 翻译实现：`0.2.1-rc.1`、`rc.2`、`rc.3`、`rc.4`、`rc.5`、`0.2.2-alpha.2`。模型推理与磁盘会话服务为本地替身，验证调用模型、关闭思考、资格/凭据拒绝、缓存隔离、审计和卸载恢复。
+- 翻译选择器展示宿主已配置的全部提供商与模型。官方 API 路由保留原生凭据和资格检查，第三方路由通过宿主 LLM 接口检查所选模型并调用，不依赖官方 API 凭据。旧配置省略提供商时保留 `deepseek-official`。
+- 缓存查询与会话 request 记录包含所选提供商和模型，审计元数据保留实际 prepared call；不同提供商的同名模型分别缓存。第三方推理模型只保存最终翻译文本，超时、取消、非法响应和存储错误保留各自错误码。
+- `node scripts/test-official-contracts.mjs --fixtures=<目录>` 验证六个真实 npm 翻译实现：`0.2.1-rc.1`、`rc.2`、`rc.3`、`rc.4`、`rc.5`、`0.2.2-alpha.2`。目录按 `<版本>/package.json` 安装对应翻译包及其 peer 依赖。测试通过公开构造函数创建真实 Cordis、翻译和 Session 服务，模型流与持久化接口使用内存数据，验证官方资格检查、第三方提供商、同名模型缓存、推理文本过滤、输入限制与卸载恢复。
 - 浏览器验证继续使用隔离 profile，不输入模型凭据或执行付费翻译。
 
 新增配置页已在 `0.2.2-alpha.2` 的真实浏览器验证：官方自动审查与翻译分组均显示，保存 `translation.model=deepseek-flash` 后按钮恢复禁用，profile 文件同步。新增最长 label 后全卡片 label 实测统一为 129 px，未捕获客户端 warn/error。截图为 `.cache/screenshots/official-models.jpg`。

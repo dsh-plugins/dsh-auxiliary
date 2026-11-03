@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 import { JSDOM } from 'jsdom';
 const require = createRequire(import.meta.url);
 
-test('翻译选择器只显示官方目录，保留错误并取消迟到请求', async (t) => {
+test('翻译选择器显示所有提供商，保留错误并取消迟到请求', async (t) => {
   const dom = new JSDOM('<body></body>', {
     runScripts: 'outside-only',
     pretendToBeVisual: true
@@ -48,7 +48,7 @@ test('翻译选择器只显示官方目录，保留错误并取消迟到请求',
     result: {
       ok: true,
       value: {
-        groups: [official, { id: 'foo', name: 'Foo', models: [] }],
+        groups: [official, { id: 'foo', name: 'Foo', models: [{ id: 'example', name: '第三方模型' }] }],
         failures: [
           { id: 'deepseek-official', name: '官方 API', message: 'example' },
           { id: 'foo', name: 'Foo', message: 'bar' }
@@ -79,7 +79,7 @@ test('翻译选择器只显示官方目录，保留错误并取消迟到请求',
     }
   });
   assert.deepEqual(Array.from(registered.field), ['translation', 'selection']);
-  const value = { provider: 'deepseek-official', model: 'example' };
+  const value = { provider: 'foo', model: 'example' };
   let changed;
   const control = registered.component({
     value,
@@ -96,10 +96,11 @@ test('翻译选择器只显示官方目录，保留错误并取消迟到请求',
   const result = await control.props.loadModels(new AbortController().signal);
   assert.deepEqual(
     Array.from(result.groups, (group) => group.id),
-    ['deepseek-official']
+    ['deepseek-official', 'foo']
   );
+  assert.equal(result.groups[1].models[0].name, '第三方模型');
   assert.equal(result.groups[0].models[0].reasoning, undefined);
-  assert.equal(result.failures.length, 1);
+  assert.equal(result.failures.length, 2);
   assert.equal(official.models[0].reasoning.efforts[0].id, 'high');
   models = async () => ({
     result: { ok: false, error: { code: 'unavailable', message: '目录不可用' } }

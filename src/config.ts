@@ -74,7 +74,8 @@ const Config = z.object({
     reasoningEffort: z.string()
   }),
   translation: z.object({
-    enabled: z.boolean().default(false).description('Override the model of the official API reasoning-translation service on dsh >= 0.2.1-rc.1.'),
+    enabled: z.boolean().default(false).description('在 dsh >= 0.2.1-rc.1 中为思考翻译选择已配置的模型。'),
+    provider: z.string().default('deepseek-official'),
     model: z.string().default('deepseek-flash')
   }),
   subagent: z.object({
@@ -190,7 +191,7 @@ export interface ResolvedPluginConfig {
   readonly tool: ResolvedToolConfig;
   readonly compact: ResolvedCompactConfig;
   readonly approve: ResolvedApproveConfig;
-  readonly translation: { readonly enabled: boolean; readonly model: string };
+  readonly translation: { readonly enabled: boolean; readonly provider: string; readonly model: string };
   readonly subagent: ResolvedSubagentConfig;
   readonly title: ResolvedTitleConfig;
   readonly imagegen: ResolvedImagegenConfig;
@@ -276,7 +277,7 @@ export function resolvePluginConfig(config: PluginConfig): ResolvedPluginConfig 
       ...(approve.reasoningEffort ? { reasoningEffort: approve.reasoningEffort as ReasoningEffortId } : {}),
       model: approveModel
     },
-    translation: { enabled: config.translation?.enabled ?? false, model: config.translation?.model?.trim() || 'deepseek-flash' },
+    translation: { enabled: config.translation?.enabled ?? false, provider: config.translation?.provider?.trim() || 'deepseek-official', model: config.translation?.model?.trim() || 'deepseek-flash' },
     subagent: {
       enabled: subagent.enabled ?? false,
       provider: subagentProvider,

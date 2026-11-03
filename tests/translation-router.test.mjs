@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import {createPatchAPI} from '@dsh-plugin/dsh-loader/patch';
 import {installOfficialTranslationModel} from '../lib/translation-router.js';
 function fixture(){
- const calls=[],records=[],cache=new Map();let config={enabled:true,model:'custom'};
+ const calls=[],records=[],cache=new Map();let config={enabled:true,provider:'deepseek-official',model:'custom'};
  const llm={listModels:async()=>[{id:'custom'},{id:'deepseek-flash'}],prepareCall:async config=>({config})};
- const translator={ctx:{get:name=>name==='llm'?llm:undefined},storage:{async run(session,identity,signal,operation){
+ const translator={lifetime:new AbortController(),ctx:{get:name=>name==='llm'?llm:undefined},storage:{async run(session,identity,signal,operation){
    const key=JSON.stringify([session,identity]);if(cache.has(key))return cache.get(key);
    const value=await operation({request:async row=>records.push(row)});cache.set(key,value);return value;
  }},async availableProviders(){return (await this.ctx.get('llm').listModels('deepseek-official')).some(row=>row.id==='deepseek-flash')?['bing','deepseek-official']:['bing']},
@@ -25,12 +25,12 @@ test('scoped model selection preserves other translation services and audit/cach
  assert.equal(await f.translator.translate(spec),'custom');assert(f.records[0].recipe.includes('custom'));
  assert.equal(f.records[0].metadata.modelRequest.config.model,'custom');assert.equal(f.calls[0].reasoningEffort,'off');
  assert.equal(await f.translator.translate(spec),'custom');assert.equal(f.calls.length,1);
- f.config({enabled:true,model:'deepseek-flash'});assert.equal(await f.translator.translate(spec),'deepseek-flash');assert.equal(f.calls.length,2);
+ f.config({enabled:true,provider:'deepseek-official',model:'deepseek-flash'});assert.equal(await f.translator.translate(spec),'deepseek-flash');assert.equal(f.calls.length,2);
  for(const provider of ['bing','google','deepseek-account'])assert.equal(await f.translator.translate({provider}),provider);
  assert.equal((await f.llm.listModels())[0].id,'custom','shared model catalog is untouched');off();
 });
 test('a missing selected model does not inherit native Flash eligibility',async()=>{
- const f=fixture();f.config({enabled:true,model:'missing'});const off=installOfficialTranslationModel(f.translator,f.patch,f.config);
+ const f=fixture();f.config({enabled:true,provider:'deepseek-official',model:'missing'});const off=installOfficialTranslationModel(f.translator,f.patch,f.config);
  assert.deepEqual(await f.translator.availableProviders(),['bing']);off();
 });
 test('Cordis traceable service is unwrapped and foreign wrappers survive unload',async()=>{

@@ -129,19 +129,24 @@ approve:
   model: my-review-model
 ```
 
-### Reasoning machine-translation model
+### 思考过程机器翻译模型
 
-From `0.2.1-rc.1`, the unified form includes a reasoning translation group:
+从 `0.2.1-rc.1` 起，统一表单增加「思考过程机器翻译」分组：
 
 ```yaml
 translation:
   enabled: true
-  model: deepseek-flash  # an existing model ID in the native official-API catalog
+  # 已配置的提供商 ID
+  provider: foo
+  # 该提供商的模型 ID
+  model: example
 ```
 
-Enable `@deepseek-ai/dsh-experimental-cot-translation-bundle` and select **DeepSeek Flash · Official API** in its translation menu. This setting changes that service's model, keeping the `deepseek-official` provider. Bing, Google and Account translation keep their original behavior.
+启用 `@deepseek-ai/dsh-experimental-cot-translation-bundle` 后，在翻译菜单选择「DeepSeek Flash · 官方 API」，再通过辅助模型配置选择实际调用的提供商与模型。选择器显示宿主已配置的全部提供商；Bing、Google、DeepSeek 账号的独立翻译入口继续使用原实现。
 
-Native credential/model/owner checks, thinking-off requests, deadlines, cancellation, response validation and Session storage are retained. Disabled overrides use native Flash. Selected models have distinct cache identities and truthful audit metadata. Configure official API credentials separately; inference uses the selected model's normal billing. Unloading releases patches and cancels active override requests.
+官方 API 模型沿用原生凭据与模型资格检查，并关闭思考。第三方模型通过宿主 LLM 接口调用，由对应提供商检查凭据并使用其默认推理设置；翻译结果只保留最终文本。请求沿用原生输入限制、超时、取消、输出大小限制和会话持久化，接口调用按所选模型计费。
+
+旧配置省略 `provider` 时继续使用 `deepseek-official`。清除选择或关闭替换时恢复官方默认 Flash。缓存按提供商与模型隔离，同名模型不会混用结果；调用记录包含实际提供商与模型。辅助模型或翻译服务卸载后会取消进行中的覆盖请求。
 
 ### Subagent model
 

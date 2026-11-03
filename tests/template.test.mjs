@@ -24,6 +24,19 @@ test('only supported hosts receive the official translation form',()=>{
   assert.equal(defaultsFor([latest]).translation.enabled,false);
 });
 
+test('翻译模型保存第三方提供商，清除选择后恢复官方默认模型', () => {
+  const template = createConfigTemplate(Config({ translation: { enabled: true, provider: 'foo', model: 'example' } }), '0.2.1-rc.1');
+  const value = defaultsFor(template.fields);
+  assert.deepEqual(value.translation.selection, { provider: 'foo', model: 'example' });
+  const saved = runtimeConfig(validateValues(template.fields, value));
+  assert.equal(saved.translation.provider, 'foo');
+  assert.equal(saved.translation.model, 'example');
+  value.translation.selection = null;
+  const cleared = runtimeConfig(value);
+  assert.equal(cleared.translation.provider, 'deepseek-official');
+  assert.equal(cleared.translation.model, 'deepseek-flash');
+});
+
 test('部署路由缺少提供商或模型时报告配置错误', () => {
   for (const vision of [{ provider: 'foo' }, { model: 'example' }]) {
     assert.throws(() => createConfigTemplate(Config({ vision })), /必须同时配置/);

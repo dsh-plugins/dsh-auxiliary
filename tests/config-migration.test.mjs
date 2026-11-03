@@ -31,6 +31,7 @@ test('旧路由迁移后保持实际模型和选项，清除选择和重新加�
       reasoningEffort: 'high'
     });
   }
+  delete old.translation.provider;
   const file = path.join(directory, 'config.json');
   await writeFile(
     file,
@@ -55,6 +56,7 @@ test('旧路由迁移后保持实际模型和选项，清除选择和重新加�
     assert.equal(config[key].reasoningEffort, 'high');
   }
   assert.equal(config.vision.maxTokens, 1234);
+  assert.equal(config.translation.provider, 'deepseek-official');
   assert.equal(config.translation.model, 'example');
   const stored = JSON.parse(await readFile(file, 'utf8'));
   assert.deepEqual(stored.value.compact.selection, {
@@ -137,5 +139,26 @@ test('迁移局部旧配置时，其他分组继续使用部署配置提供的�
   assert.equal(config.compact.provider, 'bar');
   assert.equal(config.compact.model, 'compact');
   assert.equal(config.compact.reasoningEffort, 'high');
+  handle.dispose();
+});
+
+test('翻译路由保存第三方提供商后可重新加载，清除选择不会恢复旧模型', async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'auxiliary-models-'));
+  const store = new ConfigStore(root);
+  t.after(async () => { store.dispose(); await rm(root, { recursive: true, force: true }); });
+  let handle = await registerConfig(store, { effect() {} }, Config({}), '0.2.1-rc.1');
+  await handle.update({ translation: { enabled: true, selection: { provider: 'foo', model: 'example' } } });
+  handle.dispose();
+  handle = await registerConfig(store, { effect() {} }, Config({}), '0.2.1-rc.1');
+  let config = resolvePluginConfig(runtimeConfig(handle.get().value));
+  assert.equal(config.translation.provider, 'foo');
+  assert.equal(config.translation.model, 'example');
+  await handle.update({ translation: { enabled: true, selection: null } });
+  handle.dispose();
+  handle = await registerConfig(store, { effect() {} }, Config({ translation: { provider: 'bar', model: 'bootstrap' } }), '0.2.1-rc.1');
+  config = resolvePluginConfig(runtimeConfig(handle.get().value));
+  assert.equal(config.translation.provider, 'deepseek-official');
+  assert.equal(config.translation.model, 'deepseek-flash');
+  assert.equal(handle.get().value.translation.selection, null);
   handle.dispose();
 });

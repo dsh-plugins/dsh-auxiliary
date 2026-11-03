@@ -25,10 +25,10 @@ export function runtimeConfig(value: FormConfig): PluginConfig {
       ...(selection?.reasoningEffort ? { reasoningEffort: selection.reasoningEffort } : {}) };
   }
   const translation = value.translation?.selection;
-  if (translation && (translation.provider !== 'deepseek-official' || translation.reasoningEffort !== undefined)) {
-    throw new Error('思考过程翻译仅支持官方 API 模型，并由官方翻译服务关闭思考');
+  if (translation?.reasoningEffort !== undefined) {
+    throw new Error('翻译模型的推理设置由翻译调用统一处理');
   }
-  config.translation = { enabled: value.translation?.enabled ?? false, model: translation?.model ?? 'deepseek-flash' };
+  config.translation = { enabled: value.translation?.enabled ?? false, provider: translation?.provider ?? 'deepseek-official', model: translation?.model ?? 'deepseek-flash' };
   return Config(config);
 }
 
@@ -40,7 +40,7 @@ export function createConfigTemplate(base: PluginConfig, dshVersion?: string) {
   ];
   const object = (key: string, label: string, fields: ConfigField[]): ConfigField => ({ type: 'object', key, label, fields: fields.map(field => {
     const value = field.key === 'selection'
-      ? selectionOf(key === 'translation' ? { provider: 'deepseek-official', model: base.translation?.model } : (base as any)[key])
+      ? selectionOf((base as any)[key])
       : (base as any)[key]?.[field.key!];
     return value === undefined ? field : { ...field, default: value };
   }) });
@@ -58,7 +58,7 @@ export function createConfigTemplate(base: PluginConfig, dshVersion?: string) {
     object('compact', '压缩模型', route()), object('approve', officialModelIntegrations(dshVersion).autoReview ? '官方自动审查模型' : '审查模型', route()),
     ...(officialModelIntegrations(dshVersion).translation ? [object('translation', '思考过程机器翻译', [
       { type: 'boolean', key: 'enabled', label: '替换翻译模型', default: false },
-      { type: 'model', key: 'selection', label: '官方 API 翻译模型', default: null, dialog: { id: 'translation-model', label: '选择翻译模型' }, description: '从官方 API 目录选择翻译模型，思考由官方翻译服务关闭。清除选择时使用官方默认模型。' },
+      { type: 'model', key: 'selection', label: '翻译模型', default: null, dialog: { id: 'translation-model', label: '选择翻译模型' }, description: '从已配置的提供商选择翻译模型，通过翻译菜单中的「DeepSeek Flash · 官方 API」入口使用。第三方模型使用默认推理设置；清除选择时使用官方默认模型。' },
     ])] : []),
     object('subagent', '子智能体模型', route()), object('title', '标题模型', route()), object('imagegen', '图片生成模型', route()),
     object('engine', '压缩引擎', [
@@ -84,7 +84,7 @@ export async function registerConfig(api: ConfigAPI, owner: { effect(fn: () => (
     if (field.type !== 'object' || !field.fields?.some(child => child.type === 'model')) { return field; }
     return { ...field, fields: [
       ...field.fields.map(child => child.type === 'model' ? { ...child, default: null } : child),
-      ...legacyFields.filter(child => field.key !== 'translation' || child.key === 'model'),
+      ...legacyFields,
     ] };
   }) });
   let snapshot;
@@ -93,7 +93,7 @@ export async function registerConfig(api: ConfigAPI, owner: { effect(fn: () => (
   for (const key of [...routeKeys, 'translation']) {
     const route = snapshot.value[key];
     if (!route?.provider && !route?.model && !route?.reasoningEffort) { continue; }
-    const old = key === 'translation' ? { provider: 'deepseek-official', model: route.model } : route;
+    const old = key === 'translation' ? { provider: route.provider || 'deepseek-official', model: route.model } : route;
     if (!old.provider || !old.model) { throw new Error('辅助模型的提供商与模型必须同时配置'); }
     route.selection ??= selectionOf(old);
     migrated[key] = route;

@@ -133,12 +133,17 @@ approve:
 ```yaml
 translation:
   enabled: true
-  model: deepseek-flash  # 官方 deepseek-official 模型目录中已有的 ID
+  # 已配置的提供商 ID
+  provider: foo
+  # 该提供商的模型 ID
+  model: example
 ```
 
-启用 `@deepseek-ai/dsh-experimental-cot-translation-bundle` 后，在官方翻译菜单选择「DeepSeek Flash · 官方 API」，再用本选项指定它实际调用的模型。翻译模型选择器仅显示官方 API 提供商的模型，思考由官方翻译服务关闭。Bing、Google、DeepSeek 账号翻译继续使用原实现。
+启用 `@deepseek-ai/dsh-experimental-cot-translation-bundle` 后，在翻译菜单选择「DeepSeek Flash · 官方 API」，再通过辅助模型配置选择实际调用的提供商与模型。选择器显示宿主已配置的全部提供商；Bing、Google、DeepSeek 账号的独立翻译入口继续使用原实现。
 
-保留原生凭据、模型目录和运行状态检查，以及关闭思考、超时、取消、输出校验和会话持久化。配置关闭时使用官方默认 Flash；模型变更后的缓存与原模型隔离，审计记录写入实际模型。需要已配置的官方 API 凭据，接口调用仍按所选模型计费。辅助模型或翻译服务卸载后会取消进行中的覆盖请求并释放补丁。
+官方 API 模型沿用原生凭据与模型资格检查，并关闭思考。第三方模型通过宿主 LLM 接口调用，由对应提供商检查凭据并使用其默认推理设置；翻译结果只保留最终文本。请求沿用原生输入限制、超时、取消、输出大小限制和会话持久化，接口调用按所选模型计费。
+
+旧配置省略 `provider` 时继续使用 `deepseek-official`。清除选择或关闭替换时恢复官方默认 Flash。缓存按提供商与模型隔离，同名模型不会混用结果；调用记录包含实际提供商与模型。辅助模型或翻译服务卸载后会取消进行中的覆盖请求。
 
 ### 子代理模型
 
