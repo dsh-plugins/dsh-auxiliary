@@ -16,11 +16,11 @@
  * @module dsh-auxiliary/imagegen-tool
  */
 import type { Context } from '@deepseek-ai/cordis';
-// Type-only side-effect imports: pull the `ctx.tools` / `ctx.credentials`
-// Context augmentations; erased at compile time.
+// Type-only side-effect imports: pull the `ctx.tools` / `ctx.credentials` /
+// `ctx.settings` Context augmentations; erased at compile time.
 import type {} from '@deepseek-ai/dsh-tools';
 import type {} from '@deepseek-ai/dsh-credentials';
-import type { SettingsNamespace } from '@deepseek-ai/dsh-settings';
+import type {} from '@deepseek-ai/dsh-settings';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment';
@@ -28,15 +28,13 @@ import { dsh, llm } from './dsh.js';
 import { PLUGIN_ID, PLUGIN_NAME, type ResolvedPluginConfig } from './config.js';
 
 /**
- * The llm-pi-ai settings namespace that owns the provider routes.
+ * The `llm-pi-ai` settings namespace that owns the provider routes.
  *
- * A bare string rather than `settingsNamespace('llm-pi-ai')`: this is evaluated
- * at MODULE scope, before `apply` has injected the loader facade. dsh's
- * `settingsNamespace` is pure validation that returns its argument unchanged
- * (it only brands the string at the type level), so the literal plus the brand
- * cast is exactly equivalent.
+ * A bare string: it is only a lookup key now (the route profile is read
+ * through `ctx.get('settings')` at call time), so it needs neither the
+ * `settingsNamespace()` brand nor a module-level dsh import.
  */
-const LLM_PI_AI_NS = 'llm-pi-ai' as unknown as SettingsNamespace;
+const LLM_PI_AI_NS = 'llm-pi-ai';
 
 /** Default generated-image side; the OpenAI images API accepts this. */
 const DEFAULT_SIZE = '1024x1024';
@@ -81,6 +79,60 @@ function basename(path: string): string {
 function referenceMediaType(path: string): string | undefined {
   const extension = (path.split('.').pop() ?? '').toLowerCase();
   return EXTENSION_MEDIA[extension];
+}
+
+/** One provider route profile: the settings the images API request needs. */
+export interface ImagegenProviderProfile {
+  /** OpenAI-compatible endpoint configured for the provider route. */
+  baseURL?: string;
+  /** Credential reference resolved through the harness credential seam. */
+  apiKeyEnv?: string;
+}
+
+/**
+ * The host settings service as the image-generation tool reads it.
+ *
+ * `settings` is deliberately absent from the plugin's `inject` list: image
+ * generation is optional, so the plugin must keep loading on hosts that expose
+ * no settings service at all. The supported dsh versions also disagree on the
+ * read surface — 0.1.x resolves a registered namespace with `get(ns)`, while
+ * 0.2.x dropped `get` and reports configured plugin entries through
+ * `describe()` — so both are probed here.
+ */
+interface SettingsRead {
+  /** dsh 0.1.x: the resolved value of one registered namespace. */
+  get?(ns: string): unknown;
+  /** dsh 0.1.x and 0.2.x: configured entries with their live values. */
+  describe?(): ReadonlyArray<{ ns: string; value?: unknown }>;
+}
+
+/** Settings namespace owning one provider route, as the LLM directory declares it. */
+function settingsNamespaceOf(ctx: Context, provider: string): string {
+  const declared = typeof ctx.llm.listConfigurableProviders === 'function'
+    ? ctx.llm.listConfigurableProviders().find((entry) => entry.provider === provider)
+    : undefined;
+  return declared?.settingsNs ?? LLM_PI_AI_NS;
+}
+
+/**
+ * Read one provider route profile from the host settings service.
+ *
+ * @param ctx - plugin context; the service is resolved with `ctx.get` so no
+ *   `inject` entry is required and a missing service simply yields `undefined`.
+ * @param provider - provider route id selected for image generation.
+ * @returns the stored profile, or undefined when the service, the namespace,
+ *   or the route is unavailable.
+ */
+export function providerProfile(ctx: Context, provider: string): ImagegenProviderProfile | undefined {
+  const settings = ctx.get('settings') as SettingsRead | undefined;
+  if (settings === undefined) return undefined;
+  const namespace = settingsNamespaceOf(ctx, provider);
+  const section = typeof settings.get === 'function'
+    ? settings.get(namespace)
+    : settings.describe?.().find((entry) => entry.ns === namespace)?.value;
+  const providers = (section as { providers?: Record<string, ImagegenProviderProfile> } | undefined)?.providers;
+  if (providers === undefined || !Object.hasOwn(providers, provider)) return undefined;
+  return providers[provider];
 }
 
 /**
@@ -157,14 +209,17 @@ export function registerImagegenTool(ctx: Context, get: () => ResolvedPluginConf
           'generate_image: the auxiliary image-generation model is not configured — enable it under Settings → Auxiliary Models → Image-generation model and pick a model marked for image generation',
         );
       }
-      const namespace = ctx.settings.get(LLM_PI_AI_NS) as
-        { providers?: Record<string, { baseURL?: string; apiKeyEnv?: string }> } | undefined;
-      const provider = namespace?.providers?.[imagegen.provider];
-      const baseURL = provider?.baseURL;
+      const profile = providerProfile(ctx, imagegen.provider);
+      if (profile === undefined) {
+        throw new Error(
+          `generate_image: the host exposes no settings profile for provider "${imagegen.provider}" — check the provider route under Settings → Models`,
+        );
+      }
+      const baseURL = profile.baseURL;
+      const ref = profile.apiKeyEnv;
       // apiKeyEnv is a credential reference; resolve it through the harness
       // credential seam (env / file / user-env layers), never process.env.
       let apiKey: string | undefined;
-      const ref = provider?.apiKeyEnv;
       if (ref !== undefined && ref.length > 0) {
         const resolved = await ctx.credentials.resolve(dsh().credentials.credentialRef(ref));
         apiKey = resolved?.value;
