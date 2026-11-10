@@ -176,8 +176,8 @@ imagegen:
 The harness LLM seam only speaks text, so image generation talks to the provider's OpenAI-compatible **images API** directly. With this feature enabled and a complete route:
 
 1. The `generate_image` tool is registered and a system-prompt section tells the main model to call it when the user asks to generate, draw, or create a picture.
-2. The tool reads the provider's `baseURL` from the resolved `llm-pi-ai` settings and resolves `apiKeyEnv` through the harness **credential seam** (`ctx.credentials.resolve` — env/file/user-env layers), then calls `POST {baseURL}/images/generations` with `{model, prompt, size, n}`.
-3. The returned images (base64 or URL) are written under the working directory (`.dsh/generated/`) and the file paths are returned; the main model can verify them with `inspect_image`.
+2. The tool reads the provider's `baseURL` from the resolved `llm-pi-ai` settings and resolves `apiKeyEnv` through the harness **credential seam** (`ctx.credentials.resolve`). It calls `POST {baseURL}/images/generations` for text-to-image or `POST {baseURL}/images/edits` when a reference image is provided. Both requests include `response_format: "b64_json"`.
+3. The tool prefers `data[].b64_json`. For results with only a URL, it resolves relative paths against the image API response URL and downloads the image. It saves images under `.dsh/generated/` in the working directory and returns their paths. The main model can verify the images with `inspect_image`.
 
 **Model capability mark**: use a model that supports image generation; the optional **Allow image generation** checkbox in model settings writes `imageGeneration: true` into the raw user section of the `llm-pi-ai` namespace. Mark exactly the models whose upstream endpoint actually generates images.
 

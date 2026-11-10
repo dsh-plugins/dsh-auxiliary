@@ -173,8 +173,8 @@ imagegen:
 harness 的 LLM 抽象只处理文本，因此生图直接对话提供商的 **OpenAI 兼容 images API**。功能开启且路由完整时：
 
 1. 注册 `generate_image` 工具，并注入系统提示词，引导主模型在用户要求生成/绘制图片时调用它。
-2. 工具从解析后的 `llm-pi-ai` 设置读取提供商的 `baseURL`，并通过 harness **凭据层**（`ctx.credentials.resolve`——env/file/user-env 层）解析 `apiKeyEnv`，随后调用 `POST {baseURL}/images/generations`，请求体 `{model, prompt, size, n}`。
-3. 返回的图片（base64 或 URL）写入工作目录（`.dsh/generated/`），返回文件路径；主模型可用 `inspect_image` 复核。
+2. 工具从 `llm-pi-ai` 设置读取提供商的 `baseURL`，并通过 `ctx.credentials.resolve` 解析 `apiKeyEnv`。文生图调用 `POST {baseURL}/images/generations`，提供参考图时调用 `POST {baseURL}/images/edits`。两种请求都携带 `response_format: "b64_json"`。
+3. 工具优先解码 `data[].b64_json`。上游只返回图片 URL 时，工具以生图接口的响应地址为基准补全相对路径，再下载图片。图片保存到工作目录下的 `.dsh/generated/`，工具返回文件路径，主模型可用 `inspect_image` 复核图片。
 
 **模型能力标记**：选择器只列出标记了 **允许图片生成** 的模型——在模型设置中勾选该框（向 `llm-pi-ai` 命名空间的原始 user 段写入 `imageGeneration: true`）。只标记上游端点确实支持生图的模型。
 

@@ -264,6 +264,7 @@ export function registerImagegenTool(ctx: Context, get: () => ResolvedPluginConf
         form.append('prompt', input.prompt);
         form.append('size', input.size);
         form.append('n', String(input.count));
+        form.append('response_format', 'b64_json');
         form.append('image', new Blob([referenceBytes as unknown as BlobPart], { type: referenceMedia }), referenceName);
         body = form;
       } else {
@@ -273,6 +274,7 @@ export function registerImagegenTool(ctx: Context, get: () => ResolvedPluginConf
           prompt: input.prompt,
           size: input.size,
           n: input.count,
+          response_format: 'b64_json',
         });
       }
       const response = await fetch(`${root}/${referenceBytes !== undefined ? 'images/edits' : 'images/generations'}`, {
@@ -301,7 +303,7 @@ export function registerImagegenTool(ctx: Context, get: () => ResolvedPluginConf
         if (typeof item.b64_json === 'string' && item.b64_json.length > 0) {
           buffer = Buffer.from(item.b64_json, 'base64');
         } else if (typeof item.url === 'string' && item.url.length > 0) {
-          const imageResponse = await fetch(item.url, { signal: exec.signal });
+          const imageResponse = await fetch(new URL(item.url, response.url), { signal: exec.signal });
           if (!imageResponse.ok) continue;
           buffer = Buffer.from(await imageResponse.arrayBuffer());
         } else {
