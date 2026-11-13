@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Auxiliary models",
+    "description": "Routes vision understanding, image handoff, context compaction, approval review, session titles, and image generation to dedicated models, leaving the main conversation model untouched."
+  }
+}
