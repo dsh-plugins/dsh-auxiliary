@@ -6,6 +6,7 @@
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "exports": {
+    "./loader-check": "./loader-check.mjs",
     ".": {
       "types": "./lib/index.d.ts",
       "default": "./lib/index.js"
@@ -33,6 +34,7 @@
     }
   },
   "files": [
+    "loader-check.mjs",
     "lib",
     "cordis.patch.yml",
     "locale",

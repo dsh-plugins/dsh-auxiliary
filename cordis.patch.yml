@@ -7,6 +7,8 @@
 # profile's own cordis.patch.yml), so it is a bare `insert`. Rows the profile
 # layer adds afterwards can still target this entry by its stable id.
 - insert:
+    - id: dsh-auxiliary-loader-check
+      name: '@dsh-plugin/dsh-auxiliary/loader-check'
     # Stable id so later layers can patch/disable this row by id.
     - id: dsh-auxiliary
       name: '@dsh-plugin/dsh-auxiliary'
