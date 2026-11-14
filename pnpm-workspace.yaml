@@ -1,3 +1,5 @@
+minimumReleaseAgeExclude:
+  - '@dsh-plugin/dsh-loader@2.0.0-dev.43582745196'
 # Local build hygiene: pin the duplicated dsh-session type package to one
 # copy so SessionId's brand type resolves consistently across dev deps.
 overrides:
