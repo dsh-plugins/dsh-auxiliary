@@ -8,8 +8,10 @@
  * OpenAI-compatible images API directly: the provider route's `baseURL` plus
  * the `apiKeyEnv` credential reference (read through the harness credential
  * seam) drive the request. Without a `reference` image the tool calls
- * `POST /images/generations` with a JSON body; with one it calls
- * `POST /images/edits` with a multipart form (img2img / image editing).
+ * `POST /images/generations` with a JSON body; with one or more it calls
+ * `POST /images/edits` with a multipart form (img2img / image editing), where
+ * several references travel as repeated `image[]` fields, the form the OpenAI
+ * images API accepts for an array of input images.
  * When the feature is disabled or incomplete the tool stays unregistered (the
  * model never sees it).
  *
@@ -50,12 +52,21 @@ const EXTENSION_MEDIA: Record<string, string> = {
   webp: 'image/webp',
 };
 
+/** Normalize the optional `reference` argument into image paths: one path or an array of paths. */
+function referencePaths(value: unknown): string[] {
+  const entries = typeof value === 'string' ? [value] : Array.isArray(value) ? value : [];
+  return entries
+    .filter((entry): entry is string => typeof entry === 'string')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+}
+
 /** Parse and validate the `generate_image` arguments. */
 function parseArgs(args: Record<string, unknown>): {
   prompt: string;
   size: string;
   count: number;
-  reference?: string;
+  references: string[];
 } {
   const prompt = typeof args.prompt === 'string' ? args.prompt.trim() : '';
   if (prompt.length === 0) {
@@ -64,10 +75,7 @@ function parseArgs(args: Record<string, unknown>): {
   const size = typeof args.size === 'string' && args.size.trim().length > 0 ? args.size.trim() : DEFAULT_SIZE;
   const rawCount = args.n === undefined ? 1 : args.n;
   const count = typeof rawCount === 'number' && Number.isInteger(rawCount) && rawCount >= 1 ? rawCount : 1;
-  const reference = typeof args.reference === 'string' && args.reference.trim().length > 0
-    ? args.reference.trim()
-    : undefined;
-  return { prompt, size, count, reference };
+  return { prompt, size, count, references: referencePaths(args.reference) };
 }
 
 /** Strip directory components from a file path for display. */
@@ -79,6 +87,13 @@ function basename(path: string): string {
 function referenceMediaType(path: string): string | undefined {
   const extension = (path.split('.').pop() ?? '').toLowerCase();
   return EXTENSION_MEDIA[extension];
+}
+
+/** One reference image loaded for the multipart images/edits request. */
+interface ReferenceImage {
+  bytes: Uint8Array;
+  mediaType: string;
+  name: string;
 }
 
 /** One provider route profile: the settings the images API request needs. */
@@ -144,7 +159,7 @@ export function registerImagegenTool(ctx: Context, get: () => ResolvedPluginConf
   const disposePrompt = ctx.systemPrompt.section({
     name: TOOL_SECTION,
     order: 165,
-    text: 'Use the generate_image tool to create images with the configured auxiliary image-generation model when the user asks to generate, draw, or create a picture. Pass a detailed "prompt" describing the desired image. To edit or re-style an existing image (img2img), pass its path as "reference". The tool saves the generated images under the current working directory (.dsh/generated/) and displays them inline in the conversation; you can also inspect them with inspect_image to describe or verify them.'
+    text: 'Use the generate_image tool to create images with the configured auxiliary image-generation model when the user asks to generate, draw, or create a picture. Pass a detailed "prompt" describing the desired image. To edit or re-style an existing image (img2img), pass its path as "reference"; to edit with several reference images at once, pass an array of paths. The tool saves the generated images under the current working directory (.dsh/generated/) and displays them inline in the conversation; you can also inspect them with inspect_image to describe or verify them.'
   });
   const disposeTool = ctx.tools.register(dsh().tools.defineTool({
     name: 'generate_image',
@@ -164,8 +179,11 @@ export function registerImagegenTool(ctx: Context, get: () => ResolvedPluginConf
         description: 'How many images to generate (most providers accept only 1). Defaults to 1.'
       },
       reference: {
-        type: 'string',
-        description: 'Optional absolute or workspace-relative path of a reference image to edit or re-style (img2img, sent to the images/edits endpoint).'
+        oneOf: [
+          { type: 'string' },
+          { type: 'array', items: { type: 'string' } },
+        ],
+        description: 'Optional absolute or workspace-relative path of a reference image to edit or re-style (img2img, sent to the images/edits endpoint), or an array of such paths to edit with several reference images at once.'
       }
     },
     output: {
@@ -230,42 +248,48 @@ export function registerImagegenTool(ctx: Context, get: () => ResolvedPluginConf
         );
       }
 
-      // Load the reference image first so argument errors surface before any
+      // Load the reference images first so argument errors surface before any
       // provider request.
-      let referenceBytes: Uint8Array | undefined;
-      let referenceMedia: string | undefined;
-      let referenceName: string | undefined;
-      if (input.reference !== undefined) {
-        const cwd = exec.agent?.session.header.cwd;
-        const target = await ctx.fs.resolve(input.reference, {
+      const cwd = exec.agent?.session.header.cwd;
+      const references: ReferenceImage[] = [];
+      for (const path of input.references) {
+        const target = await ctx.fs.resolve(path, {
           ...(cwd !== undefined ? { cwd } : {}),
           signal: exec.signal,
         });
         const info = await ctx.fs.stat(target, exec.signal);
         if (info === undefined || info.type !== 'file') {
-          throw new Error(`generate_image: reference "${input.reference}" is not a readable regular file`);
+          throw new Error(`generate_image: reference "${path}" is not a readable regular file`);
         }
         const media = referenceMediaType(target.displayPath);
         if (media === undefined) {
-          throw new Error('generate_image: reference image must be PNG, JPEG, or WebP');
+          throw new Error(`generate_image: reference "${path}" must be PNG, JPEG, or WebP`);
         }
-        referenceBytes = await ctx.fs.readBytes(target, exec.signal, 16 * 1024 * 1024);
-        referenceMedia = media;
-        referenceName = basename(target.displayPath);
+        references.push({
+          bytes: await ctx.fs.readBytes(target, exec.signal, 16 * 1024 * 1024),
+          mediaType: media,
+          name: basename(target.displayPath),
+        });
       }
 
       const root = `${baseURL.replace(/\/+$/, '')}`;
       const headers: Record<string, string> = { authorization: `Bearer ${apiKey}` };
       let body: BodyInit;
-      if (referenceBytes !== undefined) {
-        // Image editing / img2img: multipart form to /images/edits.
+      if (references.length > 0) {
+        // Image editing / img2img: multipart form to /images/edits. The images
+        // API reads several inputs from repeated `image[]` fields; a lone
+        // reference keeps the plain `image` field that providers with no array
+        // support still accept.
+        const imageField = references.length > 1 ? 'image[]' : 'image';
         const form = new FormData();
         form.append('model', imagegen.model);
         form.append('prompt', input.prompt);
         form.append('size', input.size);
         form.append('n', String(input.count));
         form.append('response_format', 'b64_json');
-        form.append('image', new Blob([referenceBytes as unknown as BlobPart], { type: referenceMedia }), referenceName);
+        for (const reference of references) {
+          form.append(imageField, new Blob([reference.bytes as unknown as BlobPart], { type: reference.mediaType }), reference.name);
+        }
         body = form;
       } else {
         headers['content-type'] = 'application/json';
@@ -277,7 +301,7 @@ export function registerImagegenTool(ctx: Context, get: () => ResolvedPluginConf
           response_format: 'b64_json',
         });
       }
-      const response = await fetch(`${root}/${referenceBytes !== undefined ? 'images/edits' : 'images/generations'}`, {
+      const response = await fetch(`${root}/${references.length > 0 ? 'images/edits' : 'images/generations'}`, {
         method: 'POST',
         headers,
         body,
@@ -292,7 +316,6 @@ export function registerImagegenTool(ctx: Context, get: () => ResolvedPluginConf
       if (items.length === 0) {
         throw new Error('generate_image: the provider returned no images');
       }
-      const cwd = exec.agent?.session.header.cwd;
       const dir = join(cwd ?? '.', '.dsh', 'generated');
       await mkdir(dir, { recursive: true });
       const paths: string[] = [];

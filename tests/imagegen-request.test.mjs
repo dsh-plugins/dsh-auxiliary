@@ -59,18 +59,26 @@ test('requests Base64 and downloads relative image URLs for generations and edit
 
   const generated = await tool.execute({ prompt: 'example', n: 2 }, exec);
   const edited = await tool.execute({ prompt: 'example', reference: 'reference.png' }, exec);
+  const multiEdited = await tool.execute({ prompt: 'example', reference: ['reference.png', 'second.webp'] }, exec);
 
   assert.deepEqual(requests.map(({ method, path }) => `${method} ${path}`), [
     'POST /v1/images/generations', 'GET /images/generated.png',
+    'POST /v1/images/edits', 'GET /v1/images/edited.png',
     'POST /v1/images/edits', 'GET /v1/images/edited.png',
   ]);
   assert.equal(JSON.parse(requests[0].body).response_format, 'b64_json');
   const editForm = await new Response(requests[2].body, { headers: requests[2].headers }).formData();
   assert.equal(editForm.get('response_format'), 'b64_json');
   assert.equal(editForm.get('image').name, 'reference.png');
+  const multiForm = await new Response(requests[4].body, { headers: requests[4].headers }).formData();
+  assert.deepEqual(multiForm.getAll('image[]').map((file) => [file.name, file.type]), [
+    ['reference.png', 'image/png'], ['second.webp', 'image/webp'],
+  ]);
+  assert.equal(multiForm.getAll('image').length, 0);
   assert.equal(generated.paths.length, 2);
   assert.equal(edited.paths.length, 1);
-  for (const path of [...generated.paths, ...edited.paths]) {
+  assert.equal(multiEdited.paths.length, 1);
+  for (const path of [...generated.paths, ...edited.paths, ...multiEdited.paths]) {
     assert.deepEqual(await readFile(path), image);
   }
 });

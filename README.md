@@ -176,8 +176,9 @@ imagegen:
 The harness LLM seam only speaks text, so image generation talks to the provider's OpenAI-compatible **images API** directly. With this feature enabled and a complete route:
 
 1. The `generate_image` tool is registered and a system-prompt section tells the main model to call it when the user asks to generate, draw, or create a picture.
-2. The tool reads the provider's `baseURL` from the resolved `llm-pi-ai` settings and resolves `apiKeyEnv` through the harness **credential seam** (`ctx.credentials.resolve`). It calls `POST {baseURL}/images/generations` for text-to-image or `POST {baseURL}/images/edits` when a reference image is provided. Both requests include `response_format: "b64_json"`.
-3. The tool prefers `data[].b64_json`. For results with only a URL, it resolves relative paths against the image API response URL and downloads the image. It saves images under `.dsh/generated/` in the working directory and returns their paths. The main model can verify the images with `inspect_image`.
+2. The tool reads the provider's `baseURL` from the resolved `llm-pi-ai` settings and resolves `apiKeyEnv` through the harness **credential seam** (`ctx.credentials.resolve`). It calls `POST {baseURL}/images/generations` for text-to-image or `POST {baseURL}/images/edits` when one or more reference images are provided. The edits form sends a single reference as the `image` field and several references as repeated `image[]` fields. Both requests include `response_format: "b64_json"`.
+3. The `reference` argument accepts one path or an array of paths, so one call can edit with multiple reference images. References must be PNG, JPEG, or WebP files.
+4. The tool prefers `data[].b64_json`. For results with only a URL, it resolves relative paths against the image API response URL and downloads the image. It saves images under `.dsh/generated/` in the working directory and returns their paths. The main model can verify the images with `inspect_image`.
 
 **Model capability mark**: use a model that supports image generation; the optional **Allow image generation** checkbox in model settings writes `imageGeneration: true` into the raw user section of the `llm-pi-ai` namespace. Mark exactly the models whose upstream endpoint actually generates images.
 
@@ -289,7 +290,8 @@ The named releases are included in each cutoff. Legacy controls live in the mode
 - Vision tool arguments: `path` (absolute or workspace-relative) and optional
   `question`. Supported formats: PNG, JPEG, WebP, GIF.
 - `generate_image` arguments: `prompt` (required), optional `size` and `n`
-  (most providers accept only `n: 1`).
+  (most providers accept only `n: 1`), and optional `reference` — one image path
+  or an array of paths for multi-reference editing.
 
 ## Development
 
