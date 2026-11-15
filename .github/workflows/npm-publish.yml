@@ -46,6 +46,8 @@ jobs:
         run: node --test tests/*.test.mjs
       - name: Inspect npm package contents
         run: npm pack --dry-run
+      - name: Test release version bump
+        run: node --test scripts/bump-next-patch.test.mjs
 
   publish:
     name: Publish to npm
@@ -143,14 +145,17 @@ jobs:
   # 仓库根的 npm-latest.json：从 registry 读取 dist-tags.latest 与该版本的
   # 发布时间 / tarball / integrity，以 github-actions[bot] 提交回 main。
   # 参考 dsh-launcher ci.yml 的 bump-version 回写模式。内容幂等——同一 latest
-  # 版本重复运行无 diff，不产生空提交。
+  # 版本重复运行无 diff，不产生空提交；main 仍为发布版本时自动递增 patch。
   dump-latest:
-    name: Dump npm latest version
+    name: Update npm latest and next patch version
     needs: publish
     if: >-
       github.event_name == 'push' &&
       startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    concurrency:
+      group: npm-release-writeback
+      cancel-in-progress: false
     permissions:
       contents: write
     steps:
@@ -166,16 +171,25 @@ jobs:
           registry-url: ${{ env.NPM_REGISTRY }}
       - name: Dump npm latest metadata
         run: node scripts/dump-npm-latest.mjs
-      - name: Commit and push npm-latest.json
+      - name: Bump next patch version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node scripts/bump-next-patch.mjs
+      - name: Commit npm metadata and next patch version
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add npm-latest.json
+          git add npm-latest.json package.json
+          for lockfile in package-lock.json npm-shrinkwrap.json; do
+            if [ -f "$lockfile" ]; then
+              git add "$lockfile"
+            fi
+          done
           if git diff --cached --quiet; then
-            echo "npm-latest.json unchanged — nothing to commit"
+            echo "Release metadata and version unchanged; nothing to commit"
             exit 0
           fi
-          git commit -m "chore(release): dump npm latest version"
+          git commit -m "chore(release): 更新正式版元数据并递增 patch [skip ci]"
           git push origin main
