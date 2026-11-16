@@ -46,150 +46,19 @@ jobs:
         run: node --test tests/*.test.mjs
       - name: Inspect npm package contents
         run: npm pack --dry-run
-      - name: Test release version bump
-        run: node --test scripts/bump-next-patch.test.mjs
 
   publish:
     name: Publish to npm
-    needs: quality
+    needs: "quality"
     if: >-
-      github.event_name == 'push' &&
-      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-      - name: Set up Node.js
-        uses: actions/setup-node@v6.4.0
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          registry-url: ${{ env.NPM_REGISTRY }}
-      - name: Install locked dependencies
-        run: npm ci
-      - name: Resolve publish version
-        id: release
-        shell: bash
-        env:
-          REF_TYPE: ${{ github.ref_type }}
-          REF_NAME: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-
-          PACKAGE_NAME="$(node -p "require('./package.json').name")"
-          BASE_VERSION="$(node -p "require('./package.json').version")"
-          if [[ ! "$BASE_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
-            echo "::error::package.json version must be a stable X.Y.Z value; got $BASE_VERSION"
-            exit 1
-          fi
-
-          if [[ "$REF_TYPE" == "branch" ]]; then
-            PUBLISH_VERSION="${BASE_VERSION}-dev.${GITHUB_RUN_ID}"
-            DIST_TAG="next"
-            node - "$PUBLISH_VERSION" <<'NODE'
-          const fs = require('node:fs');
-          const version = process.argv[2];
-          const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-          packageJson.version = version;
-          fs.writeFileSync('package.json', `${JSON.stringify(packageJson, null, 2)}\n`);
-          NODE
-          elif [[ "$REF_TYPE" == "tag" ]]; then
-            if [[ "$REF_NAME" != "v$BASE_VERSION" ]]; then
-              echo "::error::tag $REF_NAME must exactly match v$BASE_VERSION"
-              exit 1
-            fi
-            PUBLISH_VERSION="$BASE_VERSION"
-            DIST_TAG="latest"
-          else
-            echo "::error::unsupported ref type: $REF_TYPE"
-            exit 1
-          fi
-
-          echo "package_name=$PACKAGE_NAME" >> "$GITHUB_OUTPUT"
-          echo "version=$PUBLISH_VERSION" >> "$GITHUB_OUTPUT"
-          echo "dist_tag=$DIST_TAG" >> "$GITHUB_OUTPUT"
-      - name: Build package
-        run: npm run build
-      - name: Regression tests
-        run: node --test tests/*.test.mjs
-      - name: Inspect npm package contents
-        run: npm pack --dry-run
-      - name: Check whether the version already exists
-        id: published
-        shell: bash
-        env:
-          PACKAGE_NAME: ${{ steps.release.outputs.package_name }}
-          PACKAGE_VERSION: ${{ steps.release.outputs.version }}
-        run: |
-          set -euo pipefail
-
-          if QUERY_OUTPUT="$(npm view "${PACKAGE_NAME}@${PACKAGE_VERSION}" version --registry="$NPM_REGISTRY" 2>&1)"; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "$PACKAGE_NAME@$PACKAGE_VERSION is already published."
-          elif grep -q 'E404' <<< "$QUERY_OUTPUT"; then
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-          else
-            printf '%s\n' "$QUERY_OUTPUT" >&2
-            exit 1
-          fi
-      - name: Publish package
-        if: steps.published.outputs.exists != 'true'
-        env:
-          DIST_TAG: ${{ steps.release.outputs.dist_tag }}
-        run: npm publish --tag "$DIST_TAG"
-
-  # 正式版（tag 推送 → dist-tag=latest）发布后，把 npm latest 元数据回写到
-  # 仓库根的 npm-latest.json：从 registry 读取 dist-tags.latest 与该版本的
-  # 发布时间 / tarball / integrity，以 github-actions[bot] 提交回 main。
-  # 参考 dsh-launcher ci.yml 的 bump-version 回写模式。内容幂等——同一 latest
-  # 版本重复运行无 diff，不产生空提交；main 仍为发布版本时自动递增 patch。
-  dump-latest:
-    name: Update npm latest and next patch version
-    needs: publish
-    if: >-
-      github.event_name == 'push' &&
-      startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    concurrency:
-      group: npm-release-writeback
-      cancel-in-progress: false
+      github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     permissions:
       contents: write
-    steps:
-      - name: Checkout main
-        uses: actions/checkout@v6
-        with:
-          # 提交必须落在 tag 所指向的分支（main）。
-          ref: main
-      - name: Set up Node.js
-        uses: actions/setup-node@v6.4.0
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          registry-url: ${{ env.NPM_REGISTRY }}
-      - name: Dump npm latest metadata
-        run: node scripts/dump-npm-latest.mjs
-      - name: Bump next patch version
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: node scripts/bump-next-patch.mjs
-      - name: Commit npm metadata and next patch version
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add npm-latest.json package.json
-          for lockfile in package-lock.json npm-shrinkwrap.json; do
-            if [ -f "$lockfile" ]; then
-              git add "$lockfile"
-            fi
-          done
-          if git diff --cached --quiet; then
-            echo "Release metadata and version unchanged; nothing to commit"
-            exit 0
-          fi
-          git commit -m "chore(release): 更新正式版元数据并递增 patch [skip ci]"
-          git push origin main
+      id-token: write
+    uses: dsh-plugins/dsh-npm-publish/.github/workflows/npm-publish.yml@main
+    with:
+      install-command: "npm ci"
+      prepare-command: |
+        npm run build
+        node --test tests/*.test.mjs
+        npm pack --dry-run
