@@ -4,6 +4,7 @@ import { registerTranslationModel } from './translation-model.js';
 import type { IApiClient } from './api.js';
 import { en, zh, type AuxiliaryKey } from './locales.js';
 import { startModelCatalogInjection } from './modelCatalogInject.js';
+import { startProviderSettingsInjection } from './providerSettingsInject.js';
 import { legacyModelEditors, officialModelIntegrations } from '../compat.js';
 export const inject = ['locale', 'connection', 'dshLoaderUi'];
 interface ClientContext {
@@ -18,5 +19,16 @@ export function apply(ctx: ClientContext): void {
   const editors = legacyModelEditors(loader?.dshVersion);
   if (officialModelIntegrations(loader?.dshVersion).translation) { registerTranslationModel(ctx); }
   const t = ctx.locale.bind('dsh-auxiliary');
-  ctx.effect(() => startModelCatalogInjection(ctx.get('connection').api, t, ctx.dshLoaderUi?.onDomSettled, editors));
+  const api = ctx.get('connection').api;
+  ctx.effect(() => {
+    const listeners = new Set<() => void>();
+    const onDomSettled = ctx.dshLoaderUi?.onDomSettled === undefined ? undefined : (listener: () => void) => {
+      listeners.add(listener);
+      return () => { listeners.delete(listener); };
+    };
+    const stop = ctx.dshLoaderUi?.onDomSettled?.(() => { for (const listener of listeners) listener(); });
+    const stopCatalog = startModelCatalogInjection(api, t, onDomSettled, editors);
+    const stopProviders = startProviderSettingsInjection(api, t, onDomSettled);
+    return () => { stopProviders(); stopCatalog(); stop?.(); };
+  });
 }

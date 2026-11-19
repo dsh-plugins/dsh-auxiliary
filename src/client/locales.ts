@@ -7,6 +7,13 @@
 export const zh = {
   /** Settings nav label. */
   nav: '辅助模型',
+  providerReasoning: '默认推理强度',
+  providerReasoningInherit: '使用模型默认值',
+  providerCompaction: '压缩引擎',
+  providerCompactionDsh: '原始 DSH 压缩',
+  providerCompactionKimi: 'Kimi Code 压缩策略',
+  providerCompactionRemote: '远程压缩 V2',
+  providerOptionSaveFailed: '提供方的附加设置未保存。',
   /** Intro explaining the independent feature cards. */
   intro: '分别配置视觉理解与上下文压缩。两项功能各自有启用开关和模型路由；这里的模型均复用「模型」页中已配置的提供商。',
   /** Loading state. */
@@ -160,6 +167,13 @@ export type AuxiliaryKey = keyof typeof zh;
 
 export const en: Record<AuxiliaryKey, string> = {
   nav: 'Auxiliary Models',
+  providerReasoning: 'Default reasoning effort',
+  providerReasoningInherit: 'Use model default',
+  providerCompaction: 'Compaction engine',
+  providerCompactionDsh: 'Original DSH compaction',
+  providerCompactionKimi: 'Kimi Code compaction strategy',
+  providerCompactionRemote: 'Remote compaction V2',
+  providerOptionSaveFailed: 'Additional provider settings were not saved.',
   intro: 'Configure vision understanding and context compaction independently. Each feature has its own switch and model route, reusing providers configured on the Models page.',
   loading: 'Loading…',
   error: 'Failed:',

@@ -214,6 +214,6 @@ export async function apply(ctx: Context, config: PluginConfig): Promise<void> {
   reconcileApproveRouter();
   reconcileSubagentRouter();
   reconcileImagegenTool();
-  installCompactRouter(ctx, resolved);
+  ctx.effect(() => installCompactRouter(ctx, resolved, loader.patch));
   reconcileCompressionEngine();
 }

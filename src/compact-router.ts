@@ -14,6 +14,8 @@
 import type { Context } from '@deepseek-ai/cordis';
 import type { GenerateOptions, StreamChunk, ReasoningEffortId } from '@deepseek-ai/dsh-llm';
 import { deepFreeze } from './dsh.js';
+import type { HostAPI } from '@dsh-plugin/dsh-loader';
+import { installProviderCompaction } from './provider-compaction.js';
 import type { ResolvedPluginConfig } from './config.js';
 
 /** The configured auxiliary summarizer route, or undefined when routing is off. */
@@ -28,13 +30,17 @@ export function compactRoute(get: () => ResolvedPluginConfig): { provider: strin
  * its own stream when rerouting is needed (guarded against re-entry by the
  * route match check) and delegates via `next()` otherwise.
  */
-export function installCompactRouter(ctx: Context, get: () => ResolvedPluginConfig): () => void {
-  return ctx.on('llm/stream', (options: GenerateOptions, next: () => AsyncIterable<StreamChunk>) => {
+export function installCompactRouter(ctx: Context, get: () => ResolvedPluginConfig, patch?: HostAPI['patch']): () => void {
+  const perProvider = patch === undefined ? undefined : installProviderCompaction(ctx, patch);
+  const legacy = (options: GenerateOptions, next: () => AsyncIterable<StreamChunk>): AsyncIterable<StreamChunk> => {
     if (options.purpose !== 'compaction') return next();
     const route = compactRoute(get);
     if (route === undefined) return next();
     if (options.provider === route.provider && options.model === route.model && options.reasoningEffort === route.reasoningEffort) { return next(); }
     const rerouted = deepFreeze({ ...options, provider: route.provider, model: route.model, reasoningEffort: route.reasoningEffort });
     return ctx.llm.stream(rerouted);
-  });
+  };
+  const dispose = ctx.on('llm/stream', (options: GenerateOptions, next: () => AsyncIterable<StreamChunk>) =>
+    perProvider?.route(options, next, () => legacy(options, next)) ?? legacy(options, next));
+  return () => { dispose(); perProvider?.dispose(); };
 }

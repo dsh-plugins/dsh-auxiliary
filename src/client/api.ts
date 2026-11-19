@@ -3,11 +3,14 @@ import type { ConfigModelList } from '@dsh-plugin/dsh-loader/client';
 export interface SettingsNamespaceView { ns: string; value: unknown; user: unknown; base?: unknown; revision: number }
 interface RpcError { code: string; message: string; details?: unknown }
 interface RpcResponse<T> { result: { ok: true; value: T } | { ok: false; error: RpcError } }
+export type SettingsPathOp = { op: 'unset'; path: readonly string[] }
+  | { op: 'set'; path: readonly string[]; value: unknown };
 export interface IApiClient {
   llm: { models(input: object): Promise<RpcResponse<ConfigModelList>>; providers(input: object): Promise<RpcResponse<{ providers: Array<{ provider: string; displayName: string; settingsNs?: string }> }>> };
   settings: {
     describe(input: object): Promise<RpcResponse<{ namespaces: SettingsNamespaceView[]; writable: boolean }>>;
     update(input: { ns: string; patch: unknown; expectedRevision?: number }): Promise<RpcResponse<SettingsNamespaceView>>;
+    mutate?(input: { ns: string; ops: readonly SettingsPathOp[]; expectedRevision?: number }): Promise<RpcResponse<SettingsNamespaceView>>;
   };
 }
 type ConfigurableProviderView = { provider: string; displayName: string; settingsNs?: string };
@@ -34,7 +37,7 @@ export class AuxiliaryApiError extends Error {
 }
 
 /** Unwrap a unary RPC response without discarding its discriminant code. */
-function valueOf<T>(response: RpcResponse<T>): T {
+export function valueOf<T>(response: RpcResponse<T>): T {
   if (!response.result.ok) {
     throw new AuxiliaryApiError(
       response.result.error.code,

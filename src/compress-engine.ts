@@ -19,6 +19,7 @@ import type { ContentBlock, Message, TokenUsage, ToolSchema, ReasoningEffortId }
 import { dsh, llm } from './dsh.js';
 import { PLUGIN_NAME } from './config.js';
 import { compactRoute } from './compact-router.js';
+import { providerCompactionMode } from './provider-compaction.js';
 import type { ResolvedEngineConfig, ResolvedPluginConfig } from './config.js';
 
 /** Structural mirror of the base hook's input type. */
@@ -142,6 +143,10 @@ function compressEngineClass(): NonNullable<typeof CompressEngineClass> {
     }
 
     protected async summarize(input: CompressInput, agent: Agent, signal?: AbortSignal): Promise<CompressResult> {
+      const provider = agent.session.requestHeader()?.config.provider ?? agent.options.provider;
+      if (provider !== undefined && providerCompactionMode(this.ctx, provider) !== undefined) {
+        return super.summarize(input, agent, signal);
+      }
       const route = this.auxRoute();
       if (route === undefined) {
         // No auxiliary route: keep the stock behavior untouched.
