@@ -117,6 +117,8 @@ The listener is always installed and is a pure pass-through until a complete rou
 
 **Compaction threshold**: set `engine.enabled` and `engine.thresholdRatio` in the unified form, so compaction fires automatically once context usage reaches that percentage; the threshold must stay above the retention ratio (`engine.retainRatio`, 16% by default). The engine refreshes the policy before every pressure check, so no restart is needed after saving.
 
+**Per-provider controls.** The custom provider form shows **Default reasoning effort** below **API protocol**. Editing a Responses provider also shows **Compaction engine** below **Retry policy**. **Original DSH compaction** uses the host's standard summary. **Kimi Code compaction strategy** appends a same-language handoff instruction, reusing the conversation's effective reasoning level and replaying the whole history when it fits. It keeps DSH's checkpoint storage and retention rules. **Remote compaction V2** sends a native `compaction_trigger` and replays the returned opaque item on the same provider and model. The endpoint needs to support V2. When a provider has no explicit selection, the existing auxiliary summarizer configuration still applies.
+
 ### Automatic review model
 
 Before `0.1.7-rc.2`, `approve` routes approve-for-me review calls. From that release, it routes official `@deepseek-ai/dsh-experimental-auto-review` calls. Only provider/model are replaced; official policy, inputs, Session attribution, cancellation and decisions remain native. Enable the official plugin and choose its Auto permission mode separately.
