@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { Context, Service } from '@deepseek-ai/cordis';
 import { installProviderCompaction } from '../lib/provider-compaction.js';
 import { compactionPayload, remoteCheckpoint } from '../lib/responses-compaction.js';
 
@@ -53,10 +54,11 @@ function harness(mode, protocol = 'openai-responses') {
   const config = { providers: { [route.provider]: { api: protocol, dshAuxiliaryCompaction: mode } } };
   const ctx = {
     llm,
-    sessions: { get: () => session },
-    get: service => service === 'settings'
-      ? { describe: () => [{ ns: 'llm-pi-ai', user: config }] }
-      : { measure: () => ({ totalTokens: 100 }) },
+    get: service => ({
+      sessions: { get: () => session },
+      settings: { describe: () => [{ ns: 'llm-pi-ai', user: config }] },
+      tokenMeter: { measure: () => ({ totalTokens: 100 }) },
+    })[service],
   };
   const patch = { method(target, key, wrap) {
     const original = target[key];
@@ -116,4 +118,40 @@ test('V2 refuses to send a synthetic prompt when its trigger is absent from the 
   assert.throws(() => compactionPayload({ input: [] }, {
     ...route, replays: new Map(), trigger: { ...route, marker: '[not in request]' },
   }), /did not pass the compaction instruction/);
+});
+
+test('ordinary chat can use the optional session store from a Cordis fiber without a sessions injection', async t => {
+  const root = new Context();
+  t.after(() => root.fiber.dispose());
+  let lookups = 0;
+  class Llm extends Service {
+    constructor(ctx) { super(ctx, 'llm'); }
+  }
+  class Sessions extends Service {
+    constructor(ctx) { super(ctx, 'sessions'); }
+    get(id) {
+      assert.equal(id, 'session');
+      lookups += 1;
+      return { requestHeader: () => ({ config: route }) };
+    }
+  }
+  await root.plugin(Llm);
+  const sessions = root.plugin(Sessions);
+  await sessions;
+  let router;
+  await root.plugin({
+    inject: ['llm'],
+    apply(ctx) {
+      assert.throws(() => ctx.sessions, /without inject/);
+      router = installProviderCompaction(ctx, {});
+    },
+  });
+  async function* generate() { yield { type: 'finish', reason: { kind: 'stop' } }; }
+  const options = { ...route, messages: ordinary, sessionId: 'session' };
+  const result = await Array.fromAsync(router.route(options, generate, generate));
+  assert.deepEqual(result, [{ type: 'finish', reason: { kind: 'stop' } }]);
+  assert.equal(lookups, 1);
+  await sessions.dispose();
+  assert.deepEqual(await Array.fromAsync(router.route(options, generate, generate)), result);
+  assert.equal(lookups, 1);
 });
