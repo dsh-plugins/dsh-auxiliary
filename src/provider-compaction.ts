@@ -39,13 +39,16 @@ export function providerCompactionMode(ctx: Context, provider: string): Compacti
 export function installProviderCompaction(ctx: Context, patch: HostAPI['patch']) {
   const remote = installResponsesCompaction(ctx.llm, patch);
   const active = new WeakSet<Request>();
-  const sessions = ctx as unknown as { sessions?: { get(id: string): CompactionSession | undefined } };
   const stream = (options: Request): Stream => ctx.llm.stream(options as GenerateOptions);
 
   function route(options: Request, next: () => Stream, legacy: () => Stream): Stream {
     if (active.has(options)) return next();
 
-    const session = options.sessionId === undefined ? undefined : sessions.sessions?.get(options.sessionId);
+    // Optional chaining does not bypass Cordis injection on property reads.
+    // Look up the store without making it a required service.
+    const session = options.sessionId === undefined
+      ? undefined
+      : ctx.get('sessions')?.get(options.sessionId);
     const currentRoute = session?.requestHeader()?.config;
     const sourceProvider = currentRoute?.provider ?? options.provider;
     const mode = options.purpose === 'compaction' ? providerCompactionMode(ctx, sourceProvider) : undefined;
