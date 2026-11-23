@@ -16,7 +16,7 @@ import { registerConfig, runtimeConfig } from './config-template.js';
 import { Config, PLUGIN_ID, PLUGIN_NAME, resolvePluginConfig, type PluginConfig, type ResolvedPluginConfig } from './config.js';
 import { registerVisionTool } from './vision-tool.js';
 import { registerImageHandoff } from './image-handoff.js';
-import { registerApproveRouter, registerApproveStateEndpoint, isApprovePluginInstalled, isApproveReviewCall } from './approve-router.js';
+import { registerApproveRouter } from './approve-router.js';
 import { registerSubagentRouter } from './subagent-router.js';
 import { installTitleRouter, titleRoute } from './title-router.js';
 import { installCompactRouter } from './compact-router.js';
@@ -30,7 +30,7 @@ type DshLoaderApi = DshFacade & Pick<HostAPI, 'config' | 'patch' | 'dshVersion'>
 export { Config, PLUGIN_NAME, resolvePluginConfig } from './config.js';
 export { registerVisionTool, type VisionToolOptions } from './vision-tool.js';
 export { registerImageHandoff } from './image-handoff.js';
-export { registerApproveRouter, registerApproveStateEndpoint, isApprovePluginInstalled, isApproveReviewCall } from './approve-router.js';
+export { registerApproveRouter, isApproveReviewCall } from './approve-router.js';
 export { registerSubagentRouter } from './subagent-router.js';
 export { installTitleRouter, titleRoute } from './title-router.js';
 export { installCompactRouter, compactRoute } from './compact-router.js';
@@ -177,11 +177,6 @@ export async function apply(ctx: Context, config: PluginConfig): Promise<void> {
   // pure pass-through until a complete route is configured.
   const disposeTitleRouter = installTitleRouter(ctx, resolved);
 
-  // Read-only state endpoint for the settings page; independent of the routing
-  // feature because the card must render its "plugin not installed" notice even
-  // when `approve.enabled` is off.
-  const approveStateDisposer = registerApproveStateEndpoint(ctx);
-
   ctx.effect(() => () => {
     disposeVisionTool();
     disposeHandoff();
@@ -189,7 +184,6 @@ export async function apply(ctx: Context, config: PluginConfig): Promise<void> {
     disposeSubagentRouter();
     disposeImagegenTool();
     disposeTitleRouter();
-    approveStateDisposer();
     compressionEngine = undefined;
   }, 'dsh-auxiliary: vision tool, handoff, and approval-router lifecycle');
 
