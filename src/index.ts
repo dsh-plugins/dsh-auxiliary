@@ -20,6 +20,7 @@ import { registerApproveRouter, registerApproveStateEndpoint, isApprovePluginIns
 import { registerSubagentRouter } from './subagent-router.js';
 import { installTitleRouter, titleRoute } from './title-router.js';
 import { installCompactRouter } from './compact-router.js';
+import { installGpt62Instructions, supportsGpt62InstructionsHost } from './gpt62-instructions.js';
 import { CompressEngine, installCompressionEngine } from './compress-engine.js';
 import { registerImagegenTool } from './imagegen-tool.js';
 import { clearDshFacade, setDshFacade, type DshFacade } from './dsh.js';
@@ -215,5 +216,8 @@ export async function apply(ctx: Context, config: PluginConfig): Promise<void> {
   reconcileSubagentRouter();
   reconcileImagegenTool();
   ctx.effect(() => installCompactRouter(ctx, resolved, loader.patch));
+  if (supportsGpt62InstructionsHost(loader.dshVersion)) {
+    ctx.effect(() => installGpt62Instructions(ctx, loader.patch));
+  }
   reconcileCompressionEngine();
 }

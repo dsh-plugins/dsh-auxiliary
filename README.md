@@ -307,3 +307,7 @@ npm run build        # emits lib/
 ## License
 
 [LGPL-3.0](LICENSE)
+
+### GPT-6.2 Responses instruction history
+
+On verified DSH hosts `0.2.2-rc.5` and `0.2.3-alpha.2`, normal agent calls to a `gpt-6.2` Responses model (including suffixes such as `-sol` and `-astra`) use native in-history instruction updates even when a custom catalog omits the capability. The initial instruction is not moved to the top-level `instructions` field. Other model versions, transports and auxiliary calls are unchanged. A model/tool change or compaction may legitimately start a new context series; provider cache hits are not guaranteed.
