@@ -39,6 +39,7 @@ import type * as DshTimeout from '@deepseek-ai/dsh-timeout';
 import type * as DshCredentials from '@deepseek-ai/dsh-credentials';
 import type * as DshSubagent from '@deepseek-ai/dsh-subagent';
 import type * as DshLlm from '@deepseek-ai/dsh-llm';
+import type { BasicCompactionEngine } from '@deepseek-ai/dsh-compaction-basic';
 
 /** dshloader 的 `dsh` 门面里本插件用到的部分，签名与 dsh 本体一致。 */
 export interface DshSymbols {
@@ -56,8 +57,8 @@ export interface DshSymbols {
     delegationDepthOf: typeof DshSubagent.delegationDepthOf;
   };
   compaction: {
-    /** 基类保持宽松：它只被 `extends`，收窄反而妨碍惰性子类化。 */
-    readonly BasicCompactionEngine: new (...args: any[]) => any;
+    /** 压缩引擎使用当前宿主版本声明的服务依赖。 */
+    readonly BasicCompactionEngine: (new (...args: any[]) => any) & Pick<typeof BasicCompactionEngine, 'inject'>;
   };
   llm: {
     readonly BlockAssembler: typeof DshLlm.BlockAssembler;

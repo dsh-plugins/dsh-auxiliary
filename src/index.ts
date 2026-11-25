@@ -21,7 +21,7 @@ import { registerSubagentRouter } from './subagent-router.js';
 import { installTitleRouter, titleRoute } from './title-router.js';
 import { installCompactRouter } from './compact-router.js';
 import { installGpt62Instructions, supportsGpt62InstructionsHost } from './gpt62-instructions.js';
-import { CompressEngine, installCompressionEngine } from './compress-engine.js';
+import { installCompressionEngine } from './compress-engine.js';
 import { registerImagegenTool } from './imagegen-tool.js';
 import { clearDshFacade, setDshFacade, type DshFacade } from './dsh.js';
 
@@ -164,13 +164,19 @@ export async function apply(ctx: Context, config: PluginConfig): Promise<void> {
     disposeImagegenTool();
   };
 
-  // The compression engine is installed lazily from config-api so a threshold
-  // change in the unified form can enable it without a restart. Once
-  // installed it re-reads the policy before every pressure check.
-  let compressionEngine: CompressEngine | undefined;
-  const reconcileCompressionEngine = (): void => {
-    if (!resolved().engine.enabled || compressionEngine !== undefined) return;
-    compressionEngine = installCompressionEngine(ctx, resolved);
+  let compressionEngine: ReturnType<typeof installCompressionEngine>;
+  let compressionChange = Promise.resolve();
+  let unloading = false;
+  const reconcileCompressionEngine = async (): Promise<void> => {
+    if (unloading) {
+      return;
+    }
+    if (resolved().engine.enabled) {
+      compressionEngine ??= installCompressionEngine(ctx, resolved);
+    } else if (compressionEngine !== undefined) {
+      await compressionEngine.dispose();
+      compressionEngine = undefined;
+    }
   };
 
   // The title router mirrors the compaction router: always installed, but a
@@ -178,13 +184,14 @@ export async function apply(ctx: Context, config: PluginConfig): Promise<void> {
   const disposeTitleRouter = installTitleRouter(ctx, resolved);
 
   ctx.effect(() => () => {
+    unloading = true;
     disposeVisionTool();
     disposeHandoff();
     disposeApproveRouter();
     disposeSubagentRouter();
     disposeImagegenTool();
     disposeTitleRouter();
-    compressionEngine = undefined;
+    return compressionChange;
   }, 'dsh-auxiliary: vision tool, handoff, and approval-router lifecycle');
 
   handle.watch(({ value }) => {
@@ -194,7 +201,8 @@ export async function apply(ctx: Context, config: PluginConfig): Promise<void> {
     reconcileApproveRouter();
     reconcileSubagentRouter();
     reconcileImagegenTool();
-    reconcileCompressionEngine();
+    // Cordis 会等待旧引擎的使用方卸载，重新启用时必须等它释放 compaction。
+    compressionChange = compressionChange.then(reconcileCompressionEngine).catch(error => ctx.logger.error(error));
   });
 
   if (officialModelIntegrations(loader.dshVersion).translation) {
@@ -213,5 +221,5 @@ export async function apply(ctx: Context, config: PluginConfig): Promise<void> {
   if (supportsGpt62InstructionsHost(loader.dshVersion)) {
     ctx.effect(() => installGpt62Instructions(ctx, loader.patch));
   }
-  reconcileCompressionEngine();
+  await reconcileCompressionEngine();
 }

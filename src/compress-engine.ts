@@ -11,16 +11,16 @@
  *
  * @module dsh-auxiliary/compress-engine
  */
-import type { Context } from '@deepseek-ai/cordis';
-import type { BasicCompactionConfig, ResolvedConfig } from '@deepseek-ai/dsh-compaction-basic';
+import type { Context, Fiber } from '@deepseek-ai/cordis';
+import type { ResolvedConfig } from '@deepseek-ai/dsh-compaction-basic';
 import type { CompactionResult, CompactionTrigger } from '@deepseek-ai/dsh-compaction';
 import type { Agent } from '@deepseek-ai/dsh-agent';
-import type { ContentBlock, Message, TokenUsage, ToolSchema, ReasoningEffortId } from '@deepseek-ai/dsh-llm';
+import type { ContentBlock, Message, TokenUsage, ToolSchema } from '@deepseek-ai/dsh-llm';
 import { dsh, llm } from './dsh.js';
 import { PLUGIN_NAME } from './config.js';
 import { compactRoute } from './compact-router.js';
 import { providerCompactionMode } from './provider-compaction.js';
-import type { ResolvedEngineConfig, ResolvedPluginConfig } from './config.js';
+import type { ResolvedPluginConfig } from './config.js';
 
 /** Structural mirror of the base hook's input type. */
 interface CompressInput {
@@ -61,76 +61,55 @@ function finishError(finish: { kind: string; failure?: { message: string; code: 
   }
 }
 
-/**
- * The auxiliary compression engine's instance surface.
- *
- * Exported as an INTERFACE rather than a class type because the class itself is
- * built lazily (see {@link compressEngineClass}): its base class is a
- * module-level export of `@deepseek-ai/dsh-compaction-basic` that dshloader only
- * resolves at boot, so `class X extends Base` cannot be evaluated at module
- * scope. `index.ts` only holds the instance, so an opaque handle is enough.
- */
+/** 已安装的压缩引擎对调用方提供按需压缩入口。 */
 export interface CompressEngine {
   compactIfNeeded(agent: Agent, trigger: CompactionTrigger, signal: AbortSignal): Promise<CompactionResult | null>;
 }
 
-/** Cached lazily-built class, so repeated installs reuse one constructor. */
-let CompressEngineClass: (new (
-  ctx: Context,
-  config: BasicCompactionConfig | undefined,
-  compressPrompt: string,
-  auxRoute: () => { provider: string; model: string; reasoningEffort?: ReasoningEffortId } | undefined,
-  getEngineConfig: () => ResolvedEngineConfig,
-) => CompressEngine) | undefined;
+function hasCompactionEngine(ctx: Context): boolean {
+  if (ctx.get('compaction', false) !== undefined) {
+    ctx.logger.warn('dsh-auxiliary: compression engine skipped — ctx.compaction is already provided by dsh-compaction-basic; remove that plugin to enable the auxiliary compression engine');
+    return true;
+  }
+  return false;
+}
 
-/**
- * Build (once) the `CompressEngine` class on top of dsh's
- * `BasicCompactionEngine`.
- *
- * The base class arrives through `dshLoader.dsh.compaction`, which is only
- * populated after `apply` — hence the deferral. Everything else about the class
- * is unchanged from the eager version.
- */
-function compressEngineClass(): NonNullable<typeof CompressEngineClass> {
-  if (CompressEngineClass !== undefined) return CompressEngineClass;
+/** 通过 Cordis 挂载引擎，使宿主基类的服务依赖和异步初始化钩子随子插件生效。 */
+export function installCompressionEngine(ctx: Context, get: () => ResolvedPluginConfig): (CompressEngine & Pick<Fiber, 'dispose'>) | undefined {
+  if (hasCompactionEngine(ctx)) {
+    return undefined;
+  }
   const Base = dsh().compaction.BasicCompactionEngine;
+  let activeEngine: CompressEngine | undefined;
 
   class CompressEngineImpl extends Base {
     private readonly compressPrompt: string;
-    private readonly auxRoute: () => { provider: string; model: string; reasoningEffort?: ReasoningEffortId } | undefined;
-    private readonly getEngineConfig: () => ResolvedEngineConfig;
 
-    constructor(
-      ctx: Context,
-      config: BasicCompactionConfig | undefined,
-      compressPrompt: string,
-      auxRoute: () => { provider: string; model: string; reasoningEffort?: ReasoningEffortId } | undefined,
-      getEngineConfig: () => ResolvedEngineConfig
-    ) {
-      super(ctx, config);
-      this.compressPrompt = compressPrompt;
-      this.auxRoute = auxRoute;
-      this.getEngineConfig = getEngineConfig;
-    }
-
-    /**
-     * Refresh the pressure policy right before a check so settings-page edits to
-     * the compaction threshold apply without restarting or rebuilding listeners.
-     */
-    private syncEngineConfig(): void {
-      const engine = this.getEngineConfig();
-      const next: ResolvedConfig = {
+    constructor(scope: Context) {
+      const engine = get().engine;
+      super(scope, {
         thresholdRatio: engine.thresholdRatio,
         retainRatio: engine.retainRatio,
         maxTokens: engine.maxTokens,
         compactionRetries: engine.compactionRetries,
         maxOverflowRetries: engine.maxOverflowRetries,
-        summarizationProvider: '',
-        summarizationModel: '',
-        modelPolicies: [],
-        auto: true,
+        auto: engine.auto,
+      });
+      this.compressPrompt = engine.compressPrompt;
+    }
+
+    private syncEngineConfig(): void {
+      const engine = get().engine;
+      // 宿主还会使用自身解析出的策略字段，例如计算压力阈值所需的 headroomTokens。
+      const next: ResolvedConfig = {
+        ...this.config,
+        thresholdRatio: engine.thresholdRatio,
+        retainRatio: engine.retainRatio,
+        maxTokens: engine.maxTokens,
+        compactionRetries: engine.compactionRetries,
+        maxOverflowRetries: engine.maxOverflowRetries,
       };
-      (this as unknown as { config: ResolvedConfig }).config = next;
+      this.config = next;
     }
 
     compactIfNeeded(
@@ -147,7 +126,7 @@ function compressEngineClass(): NonNullable<typeof CompressEngineClass> {
       if (provider !== undefined && providerCompactionMode(this.ctx, provider) !== undefined) {
         return super.summarize(input, agent, signal);
       }
-      const route = this.auxRoute();
+      const route = compactRoute(get);
       if (route === undefined) {
         // No auxiliary route: keep the stock behavior untouched.
         return super.summarize(input, agent, signal);
@@ -193,29 +172,27 @@ function compressEngineClass(): NonNullable<typeof CompressEngineClass> {
     }
   }
 
-  CompressEngineClass = CompressEngineImpl as unknown as NonNullable<typeof CompressEngineClass>;
-  return CompressEngineClass;
-}
+  const fiber = ctx.plugin(class AuxiliaryCompression {
+    static inject = Base.inject;
 
-/** Install the engine unless `ctx.compaction` is already provided (the stock */
-export function installCompressionEngine(ctx: Context, get: () => ResolvedPluginConfig): CompressEngine | undefined {
-  if (ctx.get('compaction') !== undefined) {
-    ctx.logger.warn('dsh-auxiliary: compression engine skipped — ctx.compaction is already provided by dsh-compaction-basic; remove that plugin to enable the auxiliary compression engine');
-    return undefined;
-  }
-  const engine = get().engine;
-  return new (compressEngineClass())(
-    ctx,
-    {
-      thresholdRatio: engine.thresholdRatio,
-      retainRatio: engine.retainRatio,
-      maxTokens: engine.maxTokens,
-      compactionRetries: engine.compactionRetries,
-      maxOverflowRetries: engine.maxOverflowRetries,
-      auto: engine.auto
+    constructor(scope: Context) {
+      // 等待依赖期间可能已有其他后端注册。Cordis 会对这里返回的实例执行宿主初始化钩子。
+      if (hasCompactionEngine(scope)) {
+        return;
+      }
+      activeEngine = new CompressEngineImpl(scope);
+      scope.effect(() => () => { activeEngine = undefined; });
+      return activeEngine;
+    }
+  });
+  return {
+    dispose: fiber.dispose,
+    async compactIfNeeded(agent, trigger, signal) {
+      await fiber.await();
+      if (activeEngine === undefined) {
+        throw new Error('dsh-auxiliary: compression engine is inactive');
+      }
+      return activeEngine.compactIfNeeded(agent, trigger, signal);
     },
-    engine.compressPrompt,
-    () => compactRoute(get),
-    () => get().engine
-  );
+  };
 }
