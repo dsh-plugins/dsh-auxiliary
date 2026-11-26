@@ -1,0 +1,15 @@
+[
+  {
+    "name": {
+      "zh-CN": "辅助模型设置",
+      "en": "Auxiliary model settings"
+    },
+    "desc": {
+      "zh-CN": "分享辅助任务的模型选择和上下文压缩等设置。目标配置档需配置对应的模型服务商。",
+      "en": "Share model selections and settings such as context compaction for auxiliary tasks. The target profile needs the matching model providers."
+    },
+    "paths": [
+      "profiles/<profile>/config/dsh-auxiliary/config.json"
+    ]
+  }
+]
