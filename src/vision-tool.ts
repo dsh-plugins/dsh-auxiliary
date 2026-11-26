@@ -70,7 +70,9 @@ function parseArgs(args: unknown): InspectImageArgs {
   if (value.question !== undefined && typeof value.question !== 'string') {
     throw argsError(['inspect_image: "question" must be a string when present']);
   }
-  return { path: value.path, question: value.question };
+  return value.question === '' || value.question === undefined
+    ? { path: value.path }
+    : { path: value.path, question: value.question };
 }
 
 /** Parse and validate the `ref` argument of a `describe_image` call. */

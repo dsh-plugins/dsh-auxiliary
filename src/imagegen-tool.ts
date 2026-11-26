@@ -175,7 +175,7 @@ export function registerImagegenTool(ctx: Context, get: () => ResolvedPluginConf
         description: 'Requested size, e.g. 1024x1024, 1792x1024, or 1024x1792. Defaults to 1024x1024.'
       },
       n: {
-        type: 'number',
+        oneOf: [{ type: 'number' }, { type: 'string', const: '' }],
         description: 'How many images to generate (most providers accept only 1). Defaults to 1.'
       },
       reference: {

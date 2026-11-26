@@ -5,6 +5,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { parameterSchemaSpecToJsonSchema, validateJsonSchemaValue } from '@deepseek-ai/dsh-tools';
 import { clearDshFacade, setDshFacade } from '../lib/dsh.js';
 import { registerImagegenTool } from '../lib/imagegen-tool.js';
 
@@ -57,8 +58,12 @@ test('requests Base64 and downloads relative image URLs for generations and edit
   t.after(registerImagegenTool(ctx, () => ({ imagegen: { enabled: true, provider: 'example', model: 'example' } })));
   const exec = { signal: new AbortController().signal, agent: { session: { header: { cwd } } } };
 
-  const generated = await tool.execute({ prompt: 'example', n: 2 }, exec);
-  const edited = await tool.execute({ prompt: 'example', reference: 'reference.png' }, exec);
+  const parameters = parameterSchemaSpecToJsonSchema(tool.parameters);
+  const edit = { prompt: 'example', reference: 'reference.png', n: '', size: '' };
+  assert.deepEqual(validateJsonSchemaValue(parameters, edit), []);
+  assert.ok(validateJsonSchemaValue(parameters, { ...edit, n: ' ' }).length > 0);
+  const generated = await tool.execute({ prompt: 'example', n: 2, reference: '', size: '' }, exec);
+  const edited = await tool.execute(edit, exec);
   const multiEdited = await tool.execute({ prompt: 'example', reference: ['reference.png', 'second.webp'] }, exec);
 
   assert.deepEqual(requests.map(({ method, path }) => `${method} ${path}`), [
@@ -68,6 +73,8 @@ test('requests Base64 and downloads relative image URLs for generations and edit
   ]);
   assert.equal(JSON.parse(requests[0].body).response_format, 'b64_json');
   const editForm = await new Response(requests[2].body, { headers: requests[2].headers }).formData();
+  assert.equal(editForm.get('n'), '1');
+  assert.equal(editForm.get('size'), '1024x1024');
   assert.equal(editForm.get('response_format'), 'b64_json');
   assert.equal(editForm.get('image').name, 'reference.png');
   const multiForm = await new Response(requests[4].body, { headers: requests[4].headers }).formData();
